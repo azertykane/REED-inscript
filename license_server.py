@@ -1,5 +1,5 @@
-# license_server.py - VERSION OPTIMISÉE POUR RENDER.COM
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+# license_server.py - VERSION CORRIGÉE POUR TON SERVEUR
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import sqlite3
@@ -7,12 +7,15 @@ import hashlib
 import json
 import os
 import requests
+import uuid
+import secrets
 from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
 
-# Configuration Render
-RENDER_SERVICE_URL = "https://pharmagest-license.onrender.com"
+# Configuration Render - METS TON URL ICI
+RENDER_SERVICE_URL = "https://pharma-1-7g7e.onrender.com"
 
-# Chemin de la base de données (Render utilise /tmp pour SQLite)
+# Chemin de la base de données
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.join(BASE_DIR, "pharmagest_licenses.db")
 
@@ -21,8 +24,17 @@ app = FastAPI(
     title="PharmaGest License Server",
     description="API de gestion des licences à distance",
     version="2.0.0",
-    docs_url="/docs",  # Documentation automatique
+    docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# Autoriser CORS pour l'interface web
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- INITIALISATION BASE DE DONNÉES ---
@@ -65,7 +77,7 @@ def init_database():
         )
     ''')
     
-    # Table admin (logs des actions)
+    # Table admin
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admin_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,26 +94,7 @@ def init_database():
     print(f"✅ Base de données initialisée: {DATABASE_PATH}")
 
 # Initialiser au démarrage
-if not os.path.exists(DATABASE_PATH):
-    init_database()
-
-# --- PING INTERNE POUR ÉVITER L'ENDORMISSEMENT ---
-async def keep_alive_ping():
-    """Ping interne pour garder le service actif"""
-    try:
-        # Se ping soi-même
-        response = requests.get(f"{RENDER_SERVICE_URL}/health", timeout=5)
-        print(f"🔄 Ping auto: {response.status_code} - {datetime.now().strftime('%H:%M:%S')}")
-    except Exception as e:
-        print(f"⚠️ Ping échoué: {e}")
-
-# Tâche en arrière-plan pour ping toutes les 10 minutes
-from fastapi_utils.tasks import repeat_every
-
-@app.on_event("startup")
-@repeat_every(seconds=600)  # 10 minutes
-async def startup_ping_task():
-    await keep_alive_ping()
+init_database()
 
 # --- UTILITAIRES ---
 def get_db_connection():
@@ -111,9 +104,9 @@ def get_db_connection():
     return conn
 
 def verify_admin_password(password: str) -> bool:
-    """Vérifie le mot de passe admin (SHA256)"""
-    # CHANGE CE MOT DE PASSE EN PRODUCTION !
-    expected_hash = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"  # "admin123"
+    """Vérifie le mot de passe admin"""
+    # Mot de passe: "admin123"
+    expected_hash = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
     return hashlib.sha256(password.encode()).hexdigest() == expected_hash
 
 # --- MODÈLES PYDANTIC ---
@@ -148,20 +141,13 @@ async def root():
         "version": "2.0.0",
         "status": "online",
         "docs": "/docs",
-        "endpoints": {
-            "validate_license": "POST /api/v1/validate",
-            "health_check": "GET /health",
-            "admin_list": "GET /admin/licenses (X-Admin-Password required)",
-            "admin_block": "POST /admin/block",
-            "admin_renew": "POST /admin/renew"
-        },
-        "render_service": RENDER_SERVICE_URL,
+        "admin_panel": "/admin_panel.html",
         "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/health")
 async def health_check():
-    """Endpoint de santé pour les pings"""
+    """Endpoint de santé"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) as count FROM licenses")
@@ -170,16 +156,13 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "service": "PharmaGest License Server",
         "license_count": license_count,
-        "timestamp": datetime.now().isoformat(),
-        "uptime": "active",
-        "auto_ping": "enabled"
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.post("/api/v1/validate")
 async def validate_license(request: LicenseValidationRequest):
-    """Valide une licence (appelé par les clients PharmaGest)"""
+    """Valide une licence"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -201,12 +184,12 @@ async def validate_license(request: LicenseValidationRequest):
         
         license_data = dict(license)
         
-        # 2. Vérifier blocage administratif
+        # 2. Vérifier blocage
         if license_data['is_blocked']:
             return {
                 "valid": False,
                 "code": "ADMIN_BLOCKED",
-                "message": f"Licence bloquée par l'administrateur: {license_data.get('block_reason', 'Non spécifié')}",
+                "message": f"Licence bloquée: {license_data.get('block_reason', 'Non spécifié')}",
                 "license_id": license_data['license_id'],
                 "client_name": license_data['client_name'],
                 "timestamp": datetime.now().isoformat()
@@ -224,7 +207,7 @@ async def validate_license(request: LicenseValidationRequest):
                 "timestamp": datetime.now().isoformat()
             }
         
-        # 4. Mettre à jour les statistiques
+        # 4. Mettre à jour les stats
         now = datetime.now().isoformat()
         cursor.execute(
             """UPDATE licenses 
@@ -243,7 +226,7 @@ async def validate_license(request: LicenseValidationRequest):
                 now,
                 request.client_info.get('ip', '') if request.client_info else '',
                 True,
-                request.client_info.get('user_agent', 'PharmaGest Desktop') if request.client_info else ''
+                request.client_info.get('user_agent', 'PharmaGest') if request.client_info else ''
             )
         )
         
@@ -262,7 +245,7 @@ async def validate_license(request: LicenseValidationRequest):
             "days_remaining": days_remaining,
             "max_users": license_data['max_users'],
             "timestamp": now,
-            "server": "Render.com"
+            "server": RENDER_SERVICE_URL
         }
         
     except Exception as e:
@@ -270,23 +253,18 @@ async def validate_license(request: LicenseValidationRequest):
         return {
             "valid": False,
             "code": "SERVER_ERROR",
-            "message": "Erreur interne du serveur",
+            "message": f"Erreur interne: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
     finally:
         conn.close()
 
-# --- ENDPOINTS ADMIN (PROTÉGÉS) ---
-def admin_required(password: str):
-    """Middleware pour vérifier l'admin"""
-    if not verify_admin_password(password):
-        raise HTTPException(status_code=403, detail="Accès administrateur refusé")
-    return True
-
+# --- ENDPOINTS ADMIN ---
 @app.get("/admin/licenses")
-async def get_all_licenses(x_admin_password: str = ""):
-    """Liste toutes les licences (admin seulement)"""
-    admin_required(x_admin_password)
+async def get_all_licenses(x_admin_password: str = Header(None, alias="X-Admin-Password")):
+    """Liste toutes les licences"""
+    if not x_admin_password or not verify_admin_password(x_admin_password):
+        raise HTTPException(status_code=403, detail="Accès administrateur refusé")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -329,8 +307,9 @@ async def get_all_licenses(x_admin_password: str = ""):
 
 @app.post("/admin/block")
 async def block_license(request: AdminBlockRequest):
-    """Bloque une licence à distance"""
-    admin_required(request.admin_password)
+    """Bloque une licence"""
+    if not verify_admin_password(request.admin_password):
+        raise HTTPException(status_code=403, detail="Accès administrateur refusé")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -354,7 +333,7 @@ async def block_license(request: AdminBlockRequest):
             (request.reason, datetime.now().isoformat(), request.license_id)
         )
         
-        # Log l'action admin
+        # Log l'action
         cursor.execute(
             """INSERT INTO admin_actions 
                (action_type, license_id, admin_user, details)
@@ -367,11 +346,9 @@ async def block_license(request: AdminBlockRequest):
         
         return {
             "success": True,
-            "message": f"✅ Licence {request.license_id} BLOQUÉE avec succès",
+            "message": f"✅ Licence {request.license_id} bloquée",
             "client_name": dict(license)['client_name'],
-            "reason": request.reason,
-            "timestamp": datetime.now().isoformat(),
-            "effect": "Le blocage sera effectif dès la prochaine vérification du client"
+            "reason": request.reason
         }
         
     except Exception as e:
@@ -381,8 +358,9 @@ async def block_license(request: AdminBlockRequest):
 
 @app.post("/admin/renew")
 async def renew_license(request: AdminRenewRequest):
-    """Renouvelle une licence (ajoute des jours)"""
-    admin_required(request.admin_password)
+    """Renouvelle une licence"""
+    if not verify_admin_password(request.admin_password):
+        raise HTTPException(status_code=403, detail="Accès administrateur refusé")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -404,7 +382,7 @@ async def renew_license(request: AdminRenewRequest):
         old_expiry = datetime.fromisoformat(license_data['expiry_date'])
         new_expiry = old_expiry + timedelta(days=request.extra_days)
         
-        # Mettre à jour (et débloquer si nécessaire)
+        # Mettre à jour
         cursor.execute(
             """UPDATE licenses 
                SET expiry_date = ?, is_blocked = 0, block_reason = NULL,
@@ -431,13 +409,11 @@ async def renew_license(request: AdminRenewRequest):
         
         return {
             "success": True,
-            "message": f"✅ Licence renouvelée avec succès",
+            "message": "✅ Licence renouvelée",
             "license_id": request.license_id,
             "client_name": license_data['client_name'],
-            "old_expiry": license_data['expiry_date'],
             "new_expiry": new_expiry.isoformat(),
-            "extra_days": request.extra_days,
-            "timestamp": datetime.now().isoformat()
+            "extra_days": request.extra_days
         }
         
     except Exception as e:
@@ -448,18 +424,17 @@ async def renew_license(request: AdminRenewRequest):
 @app.post("/admin/create")
 async def create_license(request: CreateLicenseRequest):
     """Crée une nouvelle licence"""
-    admin_required(request.admin_password)
+    if not verify_admin_password(request.admin_password):
+        raise HTTPException(status_code=403, detail="Accès administrateur refusé")
     
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
         # Générer ID unique
-        import uuid
         license_id = f"PHG-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
         
         # Générer clé
-        import secrets
         license_key = secrets.token_urlsafe(32)
         
         # Dates
@@ -501,7 +476,7 @@ async def create_license(request: CreateLicenseRequest):
         
         return {
             "success": True,
-            "message": "✅ Licence créée avec succès",
+            "message": "✅ Licence créée",
             "license_id": license_id,
             "license_key": license_key,
             "client_name": request.client_name,
@@ -509,7 +484,6 @@ async def create_license(request: CreateLicenseRequest):
             "expiry_date": expiry_date.isoformat(),
             "duration_days": request.duration_days,
             "max_users": request.max_users,
-            "instructions": "Envoyez cette clé au client pour activation dans PharmaGest",
             "timestamp": datetime.now().isoformat()
         }
         
@@ -518,7 +492,271 @@ async def create_license(request: CreateLicenseRequest):
     finally:
         conn.close()
 
-# --- NE RIEN AJOUTER APRÈS ---
+# --- PAGE ADMIN HTML ---
+from fastapi.responses import HTMLResponse
+
+@app.get("/admin_panel.html", response_class=HTMLResponse)
+async def admin_panel():
+    """Retourne le panneau admin HTML"""
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Admin PharmaGest</title>
+        <style>
+            body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            .license { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+            .active { background: #d4edda; border-left: 5px solid #28a745; }
+            .blocked { background: #f8d7da; border-left: 5px solid #dc3545; }
+            .expired { background: #fff3cd; border-left: 5px solid #ffc107; }
+            button { margin: 5px; padding: 8px 15px; cursor: pointer; border: none; border-radius: 3px; }
+            .btn-success { background: #28a745; color: white; }
+            .btn-danger { background: #dc3545; color: white; }
+            .btn-warning { background: #ffc107; color: black; }
+            .btn-info { background: #17a2b8; color: white; }
+            input, select { padding: 8px; margin: 5px; width: 200px; }
+            .stats { display: flex; gap: 20px; margin: 20px 0; }
+            .stat-box { background: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔐 Admin Panel PharmaGest</h1>
+            
+            <div class="stats">
+                <div class="stat-box">
+                    <h3>📊 Statistiques</h3>
+                    <p id="stats">Chargement...</p>
+                </div>
+                <div class="stat-box">
+                    <h3>🔑 Nouvelle Licence</h3>
+                    <input type="password" id="adminPass" placeholder="Mot de passe admin" />
+                    <input type="text" id="clientName" placeholder="Nom client" />
+                    <input type="email" id="clientEmail" placeholder="Email client" />
+                    <select id="duration">
+                        <option value="30">1 mois</option>
+                        <option value="90">3 mois</option>
+                        <option value="180">6 mois</option>
+                        <option value="365">1 an</option>
+                    </select>
+                    <button class="btn-success" onclick="createLicense()">➕ Créer Licence</button>
+                </div>
+            </div>
+            
+            <div>
+                <h2>📋 Licences Actives</h2>
+                <button class="btn-info" onclick="loadLicenses()">🔄 Rafraîchir</button>
+                <input type="text" id="search" placeholder="Rechercher..." onkeyup="filterLicenses()" />
+            </div>
+            
+            <div id="licenses"></div>
+        </div>
+        
+        <script>
+            const SERVER_URL = window.location.origin;
+            
+            async function loadStats() {
+                try {
+                    const response = await fetch(`${SERVER_URL}/health`);
+                    const data = await response.json();
+                    document.getElementById('stats').innerHTML = 
+                        `Licences: ${data.license_count}<br>Statut: ${data.status}`;
+                } catch (e) {
+                    document.getElementById('stats').innerHTML = 'Erreur chargement stats';
+                }
+            }
+            
+            async function loadLicenses() {
+                const password = document.getElementById('adminPass').value;
+                if (!password) {
+                    alert('Veuillez entrer le mot de passe admin');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${SERVER_URL}/admin/licenses`, {
+                        headers: { 'X-Admin-Password': password }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        displayLicenses(data.licenses);
+                        loadStats();
+                    } else {
+                        alert('Accès refusé - Mot de passe incorrect');
+                    }
+                } catch (e) {
+                    alert('Erreur de connexion au serveur');
+                }
+            }
+            
+            function displayLicenses(licenses) {
+                const container = document.getElementById('licenses');
+                container.innerHTML = '';
+                
+                if (licenses.length === 0) {
+                    container.innerHTML = '<p>Aucune licence trouvée</p>';
+                    return;
+                }
+                
+                licenses.forEach(license => {
+                    const div = document.createElement('div');
+                    div.className = `license ${license.status}`;
+                    div.id = `license-${license.id}`;
+                    
+                    const days = license.days_remaining;
+                    let statusBadge = '';
+                    if (license.status === 'active') {
+                        statusBadge = `<span style="background:#28a745;color:white;padding:3px 8px;border-radius:3px;">ACTIF (${days}j)</span>`;
+                    } else if (license.status === 'blocked') {
+                        statusBadge = `<span style="background:#dc3545;color:white;padding:3px 8px;border-radius:3px;">BLOQUÉ</span>`;
+                    } else {
+                        statusBadge = `<span style="background:#ffc107;color:black;padding:3px 8px;border-radius:3px;">EXPIRÉ</span>`;
+                    }
+                    
+                    div.innerHTML = `
+                        <h3>${license.client_name} (${license.license_id})</h3>
+                        <p>📧 ${license.client_email} | ${statusBadge} | 👥 ${license.max_users} utilisateurs</p>
+                        <p>📅 Créée: ${license.created_at} | Expire: ${license.expiry_date}</p>
+                        <p>🔄 Vérifications: ${license.total_checks || 0} | Dernière: ${license.last_seen || 'Jamais'}</p>
+                        ${license.is_blocked ? `<p><strong>🚫 Raison: ${license.block_reason}</strong></p>` : ''}
+                        
+                        <div>
+                            <input type="text" id="reason-${license.id}" placeholder="Raison du blocage" />
+                            <button class="btn-danger" onclick="blockLicense('${license.license_id}')">🚫 Bloquer</button>
+                            <button class="btn-warning" onclick="unblockLicense('${license.license_id}')">✅ Débloquer</button>
+                            <button class="btn-success" onclick="renewLicense('${license.license_id}', 30)">🔄 +1 mois</button>
+                            <button class="btn-success" onclick="renewLicense('${license.license_id}', 90)">🔄 +3 mois</button>
+                            <button class="btn-success" onclick="renewLicense('${license.license_id}', 365)">🔄 +1 an</button>
+                        </div>
+                        <hr>
+                    `;
+                    
+                    container.appendChild(div);
+                });
+            }
+            
+            async function blockLicense(licenseId) {
+                const password = document.getElementById('adminPass').value;
+                const reason = document.getElementById(`reason-${licenseId}`)?.value || 'Non-paiement';
+                
+                const response = await fetch(`${SERVER_URL}/admin/block`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        license_id: licenseId,
+                        reason: reason,
+                        admin_password: password
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Licence bloquée!');
+                    loadLicenses();
+                } else {
+                    alert('❌ Erreur lors du blocage');
+                }
+            }
+            
+            async function unblockLicense(licenseId) {
+                const password = document.getElementById('adminPass').value;
+                
+                // Pour débloquer, on utilise renew avec 0 jours
+                const response = await fetch(`${SERVER_URL}/admin/renew`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        license_id: licenseId,
+                        extra_days: 0,
+                        admin_password: password,
+                        notes: "Licence débloquée"
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Licence débloquée!');
+                    loadLicenses();
+                } else {
+                    alert('❌ Erreur lors du déblocage');
+                }
+            }
+            
+            async function renewLicense(licenseId, extraDays) {
+                const password = document.getElementById('adminPass').value;
+                
+                const response = await fetch(`${SERVER_URL}/admin/renew`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        license_id: licenseId,
+                        extra_days: extraDays,
+                        admin_password: password
+                    })
+                });
+                
+                if (response.ok) {
+                    alert(\`✅ Licence renouvelée de \${extraDays} jours!\`);
+                    loadLicenses();
+                } else {
+                    alert('❌ Erreur lors du renouvellement');
+                }
+            }
+            
+            async function createLicense() {
+                const password = document.getElementById('adminPass').value;
+                const clientName = document.getElementById('clientName').value;
+                const clientEmail = document.getElementById('clientEmail').value;
+                const duration = parseInt(document.getElementById('duration').value);
+                
+                if (!clientName || !clientEmail) {
+                    alert('Veuillez remplir tous les champs');
+                    return;
+                }
+                
+                const response = await fetch(\`\${SERVER_URL}/admin/create\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_name: clientName,
+                        client_email: clientEmail,
+                        duration_days: duration,
+                        max_users: 1,
+                        admin_password: password
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(\`✅ Licence créée!\\nID: \${data.license_id}\\nClé: \${data.license_key}\`);
+                    loadLicenses();
+                } else {
+                    alert('❌ Erreur création licence');
+                }
+            }
+            
+            function filterLicenses() {
+                const search = document.getElementById('search').value.toLowerCase();
+                const licenses = document.querySelectorAll('.license');
+                
+                licenses.forEach(license => {
+                    const text = license.textContent.toLowerCase();
+                    if (text.includes(search)) {
+                        license.style.display = 'block';
+                    } else {
+                        license.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Charger les stats au démarrage
+            loadStats();
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
