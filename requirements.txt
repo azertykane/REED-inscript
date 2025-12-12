@@ -1,5 +1,0 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart
-fastapi_utils==0.2.1
-requests==2.31.0
