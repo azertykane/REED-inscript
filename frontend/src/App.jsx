@@ -1,25 +1,51 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useRef } from "react";
+import api from "./api";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(null);
+  const loaded = useRef(false);
 
   useEffect(() => {
-    if (token) {
-      axios
-        .get("/api/users/me", { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => setUser(r.data))
-        .catch(() => {
-          setUser(null);
-          setToken(null);
-          localStorage.removeItem("token");
-        });
-    }
+    if (!token || loaded.current) return;
+
+    loaded.current = true;
+
+    api
+      .get("/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setUser(res.data))
+      .catch(() => {
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem("token");
+      });
   }, [token]);
 
-  if (!token) return <Login onLogin={(t) => { setToken(t); localStorage.setItem("token", t); }} />;
-  return <Dashboard token={token} user={user} onLogout={() => { setToken(null); localStorage.removeItem("token"); }} />;
+  if (!token) {
+    return (
+      <Login
+        onLogin={(t) => {
+          localStorage.setItem("token", t);
+          setToken(t);
+          loaded.current = false;
+        }}
+      />
+    );
+  }
+
+  return (
+    <Dashboard
+      token={token}
+      user={user}
+      onLogout={() => {
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem("token");
+      }}
+    />
+  );
 }

@@ -5,14 +5,14 @@ export default function Dashboard({ token, onLogout, user }) {
   const [machines, setMachines] = useState([]);
   const [logs, setLogs] = useState([]);
 
+  const auth = {
+    headers: { Authorization: `Bearer ${token}` },
+  };
+
   useEffect(() => {
     fetchMachines();
     fetchLogs();
   }, []);
-
-  const auth = {
-    headers: { Authorization: `Bearer ${token}` },
-  };
 
   const fetchMachines = async () => {
     const res = await api.get("/machines", auth);

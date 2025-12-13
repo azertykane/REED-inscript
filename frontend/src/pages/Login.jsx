@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -8,25 +8,26 @@ export default function Login({ onLogin }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    const form = new FormData();
-    form.append("username", username);
-    form.append("password", password);
+
     try {
-      const res = await axios.post("/api/users/login", form);
+      const res = await api.post("/users/login", {
+        username,
+        password,
+      });
       onLogin(res.data.access_token);
-    } catch (err) {
-      setError(err.response?.data?.detail || "Erreur de connexion");
+    } catch {
+      setError("Erreur de connexion");
     }
   };
 
   return (
     <div className="center">
       <form className="card" onSubmit={submit}>
-        <h2>Admin Pharma - Login</h2>
+        <h2>Admin Pharma</h2>
         {error && <div className="error">{error}</div>}
-        <input placeholder="username" value={username} onChange={e => setUsername(e.target.value)} />
-        <input placeholder="password" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-        <button type="submit">Se connecter</button>
+        <input value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button>Connexion</button>
       </form>
     </div>
   );
