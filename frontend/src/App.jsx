@@ -9,6 +9,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const fetched = useRef(false);
 
+  // ✅ Charger user si token existant
   useEffect(() => {
     if (!token) {
       setLoading(false);
@@ -34,12 +35,8 @@ export default function App() {
       });
   }, [token]);
 
-  // ✅ 1. LOADING D’ABORD
-  if (loading) {
-    return <div style={{ padding: 40 }}>Chargement…</div>;
-  }
+  if (loading) return <div style={{ padding: 40 }}>Chargement session…</div>;
 
-  // ✅ 2. PAS CONNECTÉ
   if (!token || !user) {
     return (
       <Login
@@ -53,7 +50,6 @@ export default function App() {
     );
   }
 
-  // ✅ 3. CONNECTÉ
   return (
     <Dashboard
       user={user}

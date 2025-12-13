@@ -10,31 +10,31 @@ export default function Dashboard({ token, onLogout, user }) {
     headers: { Authorization: `Bearer ${token}` },
   };
 
+  // 🔄 Chargement machines et logs
   useEffect(() => {
     if (!token) return;
-    load();
+    loadData();
   }, [token]);
 
-  const load = async () => {
+  const loadData = async () => {
     try {
       const [m, l] = await Promise.all([
         api.get("/machines", auth),
         api.get("/logs", auth),
       ]);
-
       setMachines(m.data);
       setLogs(l.data);
     } catch (err) {
       console.error("API ERROR", err);
-      setError("Session expirée");
-      onLogout(); // 🔥 IMPORTANT
+      setError("Session expirée ou erreur serveur");
+      onLogout(); // déconnexion automatique si token invalide
     }
   };
 
   const block = async (id) => {
     try {
       await api.post(`/machines/${id}/block`, {}, auth);
-      load();
+      loadData();
     } catch {
       setError("Erreur blocage");
     }
@@ -43,15 +43,13 @@ export default function Dashboard({ token, onLogout, user }) {
   const unblock = async (id) => {
     try {
       await api.post(`/machines/${id}/unblock`, {}, auth);
-      load();
+      loadData();
     } catch {
       setError("Erreur déblocage");
     }
   };
 
-  if (error) {
-    return <div style={{ padding: 40 }}>{error}</div>;
-  }
+  if (error) return <div style={{ padding: 40 }}>{error}</div>;
 
   return (
     <div className="layout">
@@ -63,14 +61,12 @@ export default function Dashboard({ token, onLogout, user }) {
 
       <main className="main">
         <h2>Machines</h2>
-
         <div className="grid">
           {machines.map((m) => (
             <div key={m.id} className="card">
               <h4>{m.device_name}</h4>
               <div>MAC: {m.mac_address}</div>
               <div>Status: {m.status}</div>
-
               {m.status === "blocked" ? (
                 <button onClick={() => unblock(m.id)}>Débloquer</button>
               ) : (

@@ -11,19 +11,14 @@ export default function Login({ onLogin }) {
     setError(null);
 
     try {
-      const form = new URLSearchParams();
-      form.append("username", username);
-      form.append("password", password);
-
-      const res = await api.post("/users/login", form, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+      const res = await api.post("/users/login", {
+        username,
+        password,
       });
-
       onLogin(res.data.access_token);
-    } catch {
+    } catch (err) {
       setError("Identifiants incorrects");
+      console.error("LOGIN ERROR", err.response?.data || err.message);
     }
   };
 
@@ -31,22 +26,9 @@ export default function Login({ onLogin }) {
     <div className="center">
       <form className="card" onSubmit={submit}>
         <h2>Admin Pharma</h2>
-
         {error && <div className="error">{error}</div>}
-
-        <input
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
+        <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         <button type="submit">Connexion</button>
       </form>
     </div>
