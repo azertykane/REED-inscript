@@ -33,28 +33,27 @@ export default function App() {
         setLoading(false);
       });
   }, [token]);
-  
-  if (!user) {
-  return <div style={{ padding: 40 }}>Chargement session…</div>;
-}
 
+  // ✅ 1. LOADING D’ABORD
   if (loading) {
     return <div style={{ padding: 40 }}>Chargement…</div>;
   }
 
-  if (!token) {
+  // ✅ 2. PAS CONNECTÉ
+  if (!token || !user) {
     return (
       <Login
         onLogin={(t) => {
           localStorage.setItem("token", t);
-          setToken(t);
           fetched.current = false;
+          setToken(t);
           setLoading(true);
         }}
       />
     );
   }
 
+  // ✅ 3. CONNECTÉ
   return (
     <Dashboard
       user={user}
