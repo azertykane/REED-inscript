@@ -7,12 +7,6 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
   const loadData = async () => {
     try {
       const [mRes, lRes] = await Promise.all([
@@ -20,75 +14,68 @@ export default function Dashboard() {
         api.get("/logs"),
       ]);
 
-      console.log("Machines API:", mRes.data);
-      console.log("Logs API:", lRes.data);
-
-      setMachines(Array.isArray(mRes.data) ? mRes.data : []);
-      setLogs(Array.isArray(lRes.data) ? lRes.data : []);
-      setLoading(false);
+      setMachines(mRes.data || []);
+      setLogs(lRes.data || []);
       setError(null);
     } catch (err) {
-      console.error("API ERROR", err);
-      setError(err.response?.data || err.message || "Impossible de charger les données.");
+      console.error(err);
+      setError("Impossible de charger les données");
+    } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    loadData();
+    const t = setInterval(loadData, 10000);
+    return () => clearInterval(t);
+  }, []);
+
   const block = async (id) => {
-    try {
-      await api.post(`/machines/${id}/block`);
-      loadData();
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data || "Erreur blocage machine");
-    }
+    await api.post(`/machines/${id}/block`);
+    loadData();
   };
 
   const unblock = async (id) => {
-    try {
-      await api.post(`/machines/${id}/unblock`);
-      loadData();
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data || "Erreur déblocage machine");
-    }
+    await api.post(`/machines/${id}/unblock`);
+    loadData();
   };
 
-  if (loading) return <div style={{ padding: 40 }}>Chargement des données…</div>;
-  if (error) return <div style={{ padding: 40, color: "red" }}>{JSON.stringify(error)}</div>;
+  if (loading) return <div style={{ padding: 30 }}>Chargement…</div>;
+  if (error) return <div style={{ padding: 30, color: "red" }}>{error}</div>;
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <h3>Pharma Dashboard</h3>
-      </aside>
+    <div style={{ padding: 30 }}>
+      <h2>Machines</h2>
 
-      <main className="main">
-        <h2>Machines</h2>
-        <div className="grid">
-          {machines.map((m) => (
-            <div key={m.id} className="card">
-              <h4>{m.device_name}</h4>
-              <div>MAC: {m.mac_address}</div>
-              <div>Status: {m.status}</div>
-              {m.status === "blocked" ? (
-                <button onClick={() => unblock(m.id)}>Débloquer</button>
-              ) : (
-                <button onClick={() => block(m.id)}>Bloquer</button>
-              )}
-            </div>
-          ))}
-        </div>
+      {machines.map((m) => (
+        <div
+          key={m.id}
+          style={{
+            border: "1px solid #ccc",
+            marginBottom: 10,
+            padding: 10,
+          }}
+        >
+          <b>{m.device_name}</b><br />
+          MAC: {m.mac_address}<br />
+          Status: <b>{m.status}</b><br />
 
-        <h2>Historique</h2>
-        <div className="logs">
-          {logs.map((l) => (
-            <div key={l.id}>
-              {new Date(l.timestamp).toLocaleString()} — Machine {l.machine_id} — {l.action}
-            </div>
-          ))}
+          {m.status === "blocked" ? (
+            <button onClick={() => unblock(m.id)}>Débloquer</button>
+          ) : (
+            <button onClick={() => block(m.id)}>Bloquer</button>
+          )}
         </div>
-      </main>
+      ))}
+
+      <h2>Historique</h2>
+
+      {logs.map((l) => (
+        <div key={l.id}>
+          {new Date(l.timestamp).toLocaleString()} — Machine {l.machine_id} — {l.action}
+        </div>
+      ))}
     </div>
   );
 }
