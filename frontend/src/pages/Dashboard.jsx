@@ -1,62 +1,61 @@
 import React, { useEffect, useState } from "react";
 import api from "../api";
 
-export default function Dashboard({ token, onLogout, user }) {
+export default function Dashboard() {
   const [machines, setMachines] = useState([]);
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const auth = {
-    headers: { Authorization: `Bearer ${token}` },
-  };
-
-  // 🔄 Chargement machines et logs
+  // Rafraîchissement automatique toutes les 10s
   useEffect(() => {
-    if (!token) return;
     loadData();
-  }, [token]);
+    const interval = setInterval(loadData, 10000); // 10s
+    return () => clearInterval(interval);
+  }, []);
 
   const loadData = async () => {
     try {
-      const [m, l] = await Promise.all([
-        api.get("/machines", auth),
-        api.get("/logs", auth),
+      const [mRes, lRes] = await Promise.all([
+        api.get("/machines"),
+        api.get("/logs"),
       ]);
-      setMachines(m.data);
-      setLogs(l.data);
+      setMachines(mRes.data);
+      setLogs(lRes.data);
+      setLoading(false);
+      setError(null);
     } catch (err) {
       console.error("API ERROR", err);
-      setError("Session expirée ou erreur serveur");
-      onLogout(); // déconnexion automatique si token invalide
+      setError("Impossible de charger les données.");
+      setLoading(false);
     }
   };
 
   const block = async (id) => {
     try {
-      await api.post(`/machines/${id}/block`, {}, auth);
+      await api.post(`/machines/${id}/block`);
       loadData();
     } catch {
-      setError("Erreur blocage");
+      setError("Erreur blocage machine");
     }
   };
 
   const unblock = async (id) => {
     try {
-      await api.post(`/machines/${id}/unblock`, {}, auth);
+      await api.post(`/machines/${id}/unblock`);
       loadData();
     } catch {
-      setError("Erreur déblocage");
+      setError("Erreur déblocage machine");
     }
   };
 
+  if (loading) return <div style={{ padding: 40 }}>Chargement des données…</div>;
   if (error) return <div style={{ padding: 40 }}>{error}</div>;
 
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h3>Admin Pharma</h3>
-        <div>Utilisateur : {user?.username}</div>
-        <button onClick={onLogout}>Logout</button>
+        <h3>Pharma Dashboard</h3>
       </aside>
 
       <main className="main">
@@ -77,11 +76,13 @@ export default function Dashboard({ token, onLogout, user }) {
         </div>
 
         <h2>Historique</h2>
-        {logs.map((l) => (
-          <div key={l.id}>
-            {new Date(l.timestamp).toLocaleString()} — Machine {l.machine_id} — {l.action}
-          </div>
-        ))}
+        <div className="logs">
+          {logs.map((l) => (
+            <div key={l.id}>
+              {new Date(l.timestamp).toLocaleString()} — Machine {l.machine_id} — {l.action}
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );
