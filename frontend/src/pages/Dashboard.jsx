@@ -4,37 +4,54 @@ import api from "../api";
 export default function Dashboard({ token, onLogout, user }) {
   const [machines, setMachines] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [error, setError] = useState(null);
 
   const auth = {
     headers: { Authorization: `Bearer ${token}` },
   };
 
   useEffect(() => {
-    fetchMachines();
-    fetchLogs();
-  }, []);
+    if (!token) return;
+    load();
+  }, [token]);
 
-  const fetchMachines = async () => {
-    const res = await api.get("/machines", auth);
-    setMachines(res.data);
-  };
+  const load = async () => {
+    try {
+      const [m, l] = await Promise.all([
+        api.get("/machines", auth),
+        api.get("/logs", auth),
+      ]);
 
-  const fetchLogs = async () => {
-    const res = await api.get("/logs", auth);
-    setLogs(res.data);
+      setMachines(m.data);
+      setLogs(l.data);
+    } catch (err) {
+      console.error("API ERROR", err);
+      setError("Session expirée");
+      onLogout(); // 🔥 IMPORTANT
+    }
   };
 
   const block = async (id) => {
-    await api.post(`/machines/${id}/block`, {}, auth);
-    fetchMachines();
-    fetchLogs();
+    try {
+      await api.post(`/machines/${id}/block`, {}, auth);
+      load();
+    } catch {
+      setError("Erreur blocage");
+    }
   };
 
   const unblock = async (id) => {
-    await api.post(`/machines/${id}/unblock`, {}, auth);
-    fetchMachines();
-    fetchLogs();
+    try {
+      await api.post(`/machines/${id}/unblock`, {}, auth);
+      load();
+    } catch {
+      setError("Erreur déblocage");
+    }
   };
+
+  if (error) {
+    return <div style={{ padding: 40 }}>{error}</div>;
+  }
 
   return (
     <div className="layout">
@@ -66,7 +83,7 @@ export default function Dashboard({ token, onLogout, user }) {
         <h2>Historique</h2>
         {logs.map((l) => (
           <div key={l.id}>
-            {l.timestamp} — Machine {l.machine_id} — {l.action}
+            {new Date(l.timestamp).toLocaleString()} — Machine {l.machine_id} — {l.action}
           </div>
         ))}
       </main>

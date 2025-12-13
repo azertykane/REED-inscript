@@ -33,6 +33,10 @@ export default function App() {
         setLoading(false);
       });
   }, [token]);
+  
+  if (!user) {
+  return <div style={{ padding: 40 }}>Chargement session…</div>;
+}
 
   if (loading) {
     return <div style={{ padding: 40 }}>Chargement…</div>;
