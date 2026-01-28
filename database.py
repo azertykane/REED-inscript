@@ -1,9 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+import os
 
 db = SQLAlchemy()
 
 class StudentRequest(db.Model):
+    __tablename__ = 'student_requests'
+    
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(100), nullable=False)
     prenom = db.Column(db.String(100), nullable=False)
@@ -16,7 +19,7 @@ class StudentRequest(db.Model):
     certificat_residence = db.Column(db.String(300))
     demande_manuscrite = db.Column(db.String(300))
     carte_membre_reed = db.Column(db.String(300))
-    copie_cni = db.Column(db.String(300)) 
+    copie_cni = db.Column(db.String(300))
     
     # Status: pending, approved, rejected
     status = db.Column(db.String(20), default='pending')
@@ -27,6 +30,13 @@ class StudentRequest(db.Model):
     
     # Admin notes
     admin_notes = db.Column(db.Text)
+    
+    # Index pour les performances
+    __table_args__ = (
+        db.Index('idx_status', 'status'),
+        db.Index('idx_email', 'email'),
+        db.Index('idx_date_submitted', 'date_submitted'),
+    )
     
     def __repr__(self):
         return f'<StudentRequest {self.nom} {self.prenom}>'
@@ -40,6 +50,6 @@ class StudentRequest(db.Model):
             'telephone': self.telephone,
             'email': self.email,
             'status': self.status,
-            'date_submitted': self.date_submitted.strftime('%Y-%m-%d %H:%M'),
+            'date_submitted': self.date_submitted.strftime('%Y-%m-%d %H:%M') if self.date_submitted else None,
             'admin_notes': self.admin_notes
         }

@@ -10,11 +10,17 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 
-from config import Config
+from config import ProductionConfig, DevelopmentConfig
 from database import db, StudentRequest
 
+# Créer l'application Flask
 app = Flask(__name__)
-app.config.from_object(Config)
+
+# Sélectionner la configuration en fonction de l'environnement
+if os.environ.get('FLASK_ENV') == 'production':
+    app.config.from_object(ProductionConfig)
+else:
+    app.config.from_object(DevelopmentConfig)
 
 # Initialize extensions
 db.init_app(app)
@@ -61,7 +67,7 @@ def formulaire():
                 'certificat_residence': 'certificat_residence', 
                 'demande_manuscrite': 'demande_manuscrite',
                 'carte_membre_reed': 'carte_membre_reed',
-                'copie_cni': 'copie_cni'  # Nouveau fichier
+                'copie_cni': 'copie_cni'
             }
             
             files_uploaded = True
@@ -85,7 +91,8 @@ def formulaire():
             
             # Envoyer un email de confirmation à l'étudiant
             try:
-                send_confirmation_email(email, nom, prenom, new_request.id)
+                if not app.config.get('MAIL_SUPPRESS_SEND', False):
+                    send_confirmation_email(email, nom, prenom, new_request.id)
             except Exception as email_error:
                 print(f"Erreur d'envoi d'email: {email_error}")
                 # Ne pas bloquer l'enregistrement si l'email échoue
@@ -132,20 +139,13 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        print(f"\n=== TENTATIVE DE CONNEXION ===")
-        print(f"Username: '{username}'")
-        print(f"Password: '{password}'")
-        print(f"Attendu: 'admin' / 'admin123'")
-        
-        if username == 'admin' and password == 'admin123':
+        if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASSWORD']:
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
-            print("✓ Connexion réussie")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Identifiants incorrects', 'error')
-            print("✗ Identifiants incorrects")
     
     return render_template('admin_login.html')
 
@@ -197,7 +197,7 @@ def update_status(request_id):
             db.session.commit()
             
             # Envoyer un email à l'étudiant si le statut change
-            if old_status != status:
+            if old_status != status and not app.config.get('MAIL_SUPPRESS_SEND', False):
                 send_status_email(student_request, status, notes)
             
             return jsonify({'success': True, 'message': 'Statut mis à jour'})
@@ -316,41 +316,46 @@ def send_email():
         if not valid_emails:
             return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
         
-        # Envoyer les emails
+        # Envoyer les emails (si non supprimés en développement)
         sent_count = 0
         failed_emails = []
         
-        for i, email in enumerate(valid_emails):
-            try:
-                # Personnaliser le message avec les variables
-                personalized_message = message
-                if recipient_type in ['approved', 'rejected', 'pending', 'selected', 'all']:
-                    # Chercher l'étudiant correspondant
-                    student = next((s for s in recipients if s.email == email), None)
-                    if student:
-                        personalized_message = message.replace('{nom}', student.nom or '')
-                        personalized_message = personalized_message.replace('{prenom}', student.prenom or '')
-                        personalized_message = personalized_message.replace('{id}', str(student.id))
-                        if student.date_submitted:
-                            personalized_message = personalized_message.replace('{date}', student.date_submitted.strftime('%d/%m/%Y'))
-                
-                msg = Message(
-                    subject=subject,
-                    recipients=[email],
-                    body=personalized_message,
-                    sender=app.config['MAIL_DEFAULT_SENDER']
-                )
-                
-                mail.send(msg)
-                sent_count += 1
-                
-                # Petite pause pour éviter les limites de Gmail
-                if i % 10 == 0 and i > 0:
-                    time.sleep(1)
+        if app.config.get('MAIL_SUPPRESS_SEND', False):
+            # Mode développement : simuler l'envoi
+            sent_count = len(valid_emails)
+            print(f"Simulation: {sent_count} emails seraient envoyés")
+        else:
+            # Mode production : envoyer réellement
+            for i, email in enumerate(valid_emails):
+                try:
+                    # Personnaliser le message avec les variables
+                    personalized_message = message
+                    if recipient_type in ['approved', 'rejected', 'pending', 'selected', 'all']:
+                        student = next((s for s in recipients if s.email == email), None)
+                        if student:
+                            personalized_message = message.replace('{nom}', student.nom or '')
+                            personalized_message = personalized_message.replace('{prenom}', student.prenom or '')
+                            personalized_message = personalized_message.replace('{id}', str(student.id))
+                            if student.date_submitted:
+                                personalized_message = personalized_message.replace('{date}', student.date_submitted.strftime('%d/%m/%Y'))
                     
-            except Exception as e:
-                failed_emails.append({'email': email, 'error': str(e)})
-                print(f"Erreur d'envoi à {email}: {e}")
+                    msg = Message(
+                        subject=subject,
+                        recipients=[email],
+                        body=personalized_message,
+                        sender=app.config['MAIL_DEFAULT_SENDER']
+                    )
+                    
+                    mail.send(msg)
+                    sent_count += 1
+                    
+                    # Petite pause pour éviter les limites de Gmail
+                    if i % 10 == 0 and i > 0:
+                        time.sleep(1)
+                        
+                except Exception as e:
+                    failed_emails.append({'email': email, 'error': str(e)})
+                    print(f"Erreur d'envoi à {email}: {e}")
         
         # Préparer la réponse
         response_data = {
@@ -361,7 +366,7 @@ def send_email():
         }
         
         if failed_emails:
-            response_data['failed_emails'] = failed_emails[:10]  # Limiter à 10 échecs
+            response_data['failed_emails'] = failed_emails[:10]
             response_data['warning'] = f"{len(failed_emails)} email(s) n'ont pas pu être envoyés"
         
         return jsonify(response_data)
@@ -537,16 +542,16 @@ def page_not_found(e):
 def internal_server_error(e):
     return render_template('500.html'), 500
 
-if __name__ == '__main__':
+# Initialisation de la base de données
+def init_db():
     with app.app_context():
         db.create_all()
-        print("\n" + "="*60)
-        print("APPLICATION DÉMARRÉE")
-        print("="*60)
-        print("URL: http://127.0.0.1:5000")
-        print("Login admin: http://127.0.0.1:5000/admin/login")
-        print("Identifiants: admin / admin123")
-        print("Email configuré: rashidtoure730@gmail.com")
-        print("="*60 + "\n")
+        print("Base de données initialisée!")
+
+if __name__ == '__main__':
+    # Initialiser la base de données
+    init_db()
     
-    app.run(debug=True, port=5000)
+    # Lancer l'application
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=app.config['DEBUG'])
