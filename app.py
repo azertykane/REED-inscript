@@ -10,16 +10,20 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 import secrets
+from pathlib import Path
 
 from config import Config
 from database import db, StudentRequest
 
 app = Flask(__name__)
 
+# Chemin absolu pour les uploads
+BASE_DIR = Path(__file__).parent
+
 # Configuration pour Render
 class RenderConfig(Config):
     # Utiliser PostgreSQL sur Render, SQLite en local
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///amicale.db')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', f'sqlite:///{BASE_DIR}/amicale.db')
     
     # Si c'est PostgreSQL, ajuster l'URL
     if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
@@ -28,13 +32,12 @@ class RenderConfig(Config):
     # Clé secrète sécurisée
     SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
     
-    # Configuration mail pour Render
-    MAIL_SERVER = 'smtp.gmail.com'
-    MAIL_PORT = 587
-    MAIL_USE_TLS = True
+    # Configuration mail
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME')
+    
+    # Chemin absolu pour les uploads
+    UPLOAD_FOLDER = str(BASE_DIR / 'static' / 'uploads')
 
 app.config.from_object(RenderConfig)
 
@@ -568,7 +571,8 @@ if __name__ == '__main__':
         print("="*60)
         print(f"Environment: {'Production' if not app.debug else 'Development'}")
         print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI'].split('://')[0]}")
+        print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
         print("="*60 + "\n")
     
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)

@@ -1,0 +1,20 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="amicale-etudiants",
+    version="1.0.0",
+    packages=find_packages(),
+    install_requires=[
+        "Flask==2.3.3",
+        "Flask-SQLAlchemy==3.0.5",
+        "Flask-Login==0.6.2",
+        "Flask-Mail==0.9.1",
+        "email-validator==2.0.0",
+        "reportlab==4.0.8",
+        "python-dotenv==1.0.0",
+        "WTForms==3.1.2",
+        "Flask-WTF==1.2.1",
+        "Pillow==11.0.0",
+        "gunicorn==21.2.0",
+    ],
+)
