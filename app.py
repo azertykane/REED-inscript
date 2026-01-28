@@ -9,22 +9,42 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
+import secrets
 
-from config import DevelopmentConfig  # Toujours utiliser DevelopmentConfig en local
+from config import Config
 from database import db, StudentRequest
 
-# Créer l'application Flask
 app = Flask(__name__)
 
-# Utiliser DevelopmentConfig pour le développement local
-app.config.from_object(DevelopmentConfig)
+# Configuration pour Render
+class RenderConfig(Config):
+    # Utiliser PostgreSQL sur Render, SQLite en local
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///amicale.db')
+    
+    # Si c'est PostgreSQL, ajuster l'URL
+    if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
+        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
+    
+    # Clé secrète sécurisée
+    SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+    
+    # Configuration mail pour Render
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME')
+
+app.config.from_object(RenderConfig)
 
 # Initialize extensions
 db.init_app(app)
 mail = Mail(app)
 
-# Créer le dossier uploads s'il n'existe pas
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Create upload folder if it doesn't exist
+upload_folder = app.config['UPLOAD_FOLDER']
+os.makedirs(upload_folder, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -64,7 +84,7 @@ def formulaire():
                 'certificat_residence': 'certificat_residence', 
                 'demande_manuscrite': 'demande_manuscrite',
                 'carte_membre_reed': 'carte_membre_reed',
-                'copie_cni': 'copie_cni'
+                'copie_cni': 'copie_cni'  # Nouveau fichier
             }
             
             files_uploaded = True
@@ -86,17 +106,14 @@ def formulaire():
             db.session.add(new_request)
             db.session.commit()
             
-            # Envoyer un email de confirmation à l'étudiant (simulé en développement)
+            # Envoyer un email de confirmation à l'étudiant
             try:
-                if not app.config.get('MAIL_SUPPRESS_SEND', False):
-                    send_confirmation_email(email, nom, prenom, new_request.id)
-                    flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
-                else:
-                    flash('Votre demande a été soumise avec succès! (Mode développement)', 'success')
+                send_confirmation_email(email, nom, prenom, new_request.id)
             except Exception as email_error:
                 print(f"Erreur d'envoi d'email: {email_error}")
-                flash('Votre demande a été soumise avec succès!', 'success')
+                # Ne pas bloquer l'enregistrement si l'email échoue
             
+            flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
             return redirect(url_for('index'))
             
         except Exception as e:
@@ -138,13 +155,20 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASSWORD']:
+        print(f"\n=== TENTATIVE DE CONNEXION ===")
+        print(f"Username: '{username}'")
+        print(f"Password: '{password}'")
+        print(f"Attendu: 'admin' / 'admin123'")
+        
+        if username == 'admin' and password == 'admin123':
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
+            print("✓ Connexion réussie")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Identifiants incorrects', 'error')
+            print("✗ Identifiants incorrects")
     
     return render_template('admin_login.html')
 
@@ -154,24 +178,16 @@ def admin_dashboard():
         flash('Veuillez vous connecter', 'error')
         return redirect(url_for('admin_login'))
     
-    try:
-        requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
-        pending_count = StudentRequest.query.filter_by(status='pending').count()
-        approved_count = StudentRequest.query.filter_by(status='approved').count()
-        rejected_count = StudentRequest.query.filter_by(status='rejected').count()
-        
-        return render_template('admin_dashboard.html', 
-                             requests=requests,
-                             pending_count=pending_count,
-                             approved_count=approved_count,
-                             rejected_count=rejected_count)
-    except Exception as e:
-        flash(f'Erreur de base de données: {str(e)}', 'error')
-        return render_template('admin_dashboard.html', 
-                             requests=[],
-                             pending_count=0,
-                             approved_count=0,
-                             rejected_count=0)
+    requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
+    pending_count = StudentRequest.query.filter_by(status='pending').count()
+    approved_count = StudentRequest.query.filter_by(status='approved').count()
+    rejected_count = StudentRequest.query.filter_by(status='rejected').count()
+    
+    return render_template('admin_dashboard.html', 
+                         requests=requests,
+                         pending_count=pending_count,
+                         approved_count=approved_count,
+                         rejected_count=rejected_count)
 
 @app.route('/admin/view/<int:request_id>')
 def view_request(request_id):
@@ -204,7 +220,7 @@ def update_status(request_id):
             db.session.commit()
             
             # Envoyer un email à l'étudiant si le statut change
-            if old_status != status and not app.config.get('MAIL_SUPPRESS_SEND', False):
+            if old_status != status:
                 send_status_email(student_request, status, notes)
             
             return jsonify({'success': True, 'message': 'Statut mis à jour'})
@@ -323,17 +339,53 @@ def send_email():
         if not valid_emails:
             return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
         
-        # En développement, simuler l'envoi
-        sent_count = len(valid_emails)
-        print(f"Simulation: {sent_count} emails seraient envoyés")
+        # Envoyer les emails
+        sent_count = 0
+        failed_emails = []
+        
+        for i, email in enumerate(valid_emails):
+            try:
+                # Personnaliser le message avec les variables
+                personalized_message = message
+                if recipient_type in ['approved', 'rejected', 'pending', 'selected', 'all']:
+                    # Chercher l'étudiant correspondant
+                    student = next((s for s in recipients if s.email == email), None)
+                    if student:
+                        personalized_message = message.replace('{nom}', student.nom or '')
+                        personalized_message = personalized_message.replace('{prenom}', student.prenom or '')
+                        personalized_message = personalized_message.replace('{id}', str(student.id))
+                        if student.date_submitted:
+                            personalized_message = personalized_message.replace('{date}', student.date_submitted.strftime('%d/%m/%Y'))
+                
+                msg = Message(
+                    subject=subject,
+                    recipients=[email],
+                    body=personalized_message,
+                    sender=app.config['MAIL_DEFAULT_SENDER']
+                )
+                
+                mail.send(msg)
+                sent_count += 1
+                
+                # Petite pause pour éviter les limites de Gmail
+                if i % 10 == 0 and i > 0:
+                    time.sleep(1)
+                    
+            except Exception as e:
+                failed_emails.append({'email': email, 'error': str(e)})
+                print(f"Erreur d'envoi à {email}: {e}")
         
         # Préparer la réponse
         response_data = {
             'success': True, 
-            'message': f'{sent_count} email(s) seraient envoyés en production',
+            'message': f'{sent_count} email(s) envoyé(s) avec succès sur {len(valid_emails)} destinataire(s)',
             'sent_count': sent_count,
             'total_count': len(valid_emails)
         }
+        
+        if failed_emails:
+            response_data['failed_emails'] = failed_emails[:10]  # Limiter à 10 échecs
+            response_data['warning'] = f"{len(failed_emails)} email(s) n'ont pas pu être envoyés"
         
         return jsonify(response_data)
     
@@ -509,25 +561,14 @@ def internal_server_error(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    # Initialiser la base de données
     with app.app_context():
-        try:
-            print("Initialisation de la base de données...")
-            db.create_all()
-            print("Base de données initialisée avec succès!")
-        except Exception as e:
-            print(f"Erreur lors de l'initialisation de la base de données: {e}")
+        db.create_all()
+        print("\n" + "="*60)
+        print("APPLICATION DÉMARRÉE")
+        print("="*60)
+        print(f"Environment: {'Production' if not app.debug else 'Development'}")
+        print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI'].split('://')[0]}")
+        print("="*60 + "\n")
     
-    # Lancer l'application
     port = int(os.environ.get('PORT', 5000))
-    print(f"\n{'='*60}")
-    print("APPLICATION DÉMARRÉE")
-    print(f"{'='*60}")
-    print(f"URL: http://127.0.0.1:{port}")
-    print(f"Admin: http://127.0.0.1:{port}/admin/login")
-    print(f"Identifiants: {app.config['ADMIN_USERNAME']} / {app.config['ADMIN_PASSWORD']}")
-    print(f"Mode: {'PRODUCTION' if not app.config['DEBUG'] else 'DÉVELOPPEMENT'}")
-    print(f"Base de données: {app.config['SQLALCHEMY_DATABASE_URI']}")
-    print(f"{'='*60}\n")
-    
-    app.run(host='0.0.0.0', port=port, debug=app.config['DEBUG'])
+    app.run(host='0.0.0.0', port=port)

@@ -1,8 +1,7 @@
 services:
   - type: web
-    name: amicale-etudiants
+    name: REED
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
@@ -16,7 +15,3 @@ services:
         sync: false
     healthCheckPath: /
     autoDeploy: true
-    disk:
-      name: uploads
-      mountPath: /opt/render/project/src/static/uploads
-      sizeGB: 1

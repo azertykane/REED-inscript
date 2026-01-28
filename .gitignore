@@ -1,0 +1,23 @@
+# Environment
+.env
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Database
+amicale.db
+instance/
+
+# Uploads
+static/uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
