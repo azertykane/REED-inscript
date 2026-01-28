@@ -2,10 +2,10 @@ import os
 from datetime import timedelta
 
 class Config:
-    # Clé secrète - sera remplacée par RenderConfig
+    # Clé secrète
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
     
-    # Base de données - sera remplacée par RenderConfig
+    # Base de données
     SQLALCHEMY_DATABASE_URI = 'sqlite:///amicale.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
@@ -20,11 +20,11 @@ class Config:
     MAIL_USE_TLS = True
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'noreply@amicale.com')
     
     # Admin credentials
-    ADMIN_USERNAME = 'admin'
-    ADMIN_PASSWORD = 'admin123'
+    ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
     
     # Session
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)

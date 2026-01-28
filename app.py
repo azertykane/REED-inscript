@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session
 from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
@@ -32,12 +33,17 @@ class RenderConfig(Config):
     # Clé secrète sécurisée
     SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
     
-    # Configuration mail
+    # Configuration mail avec valeurs par défaut
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'noreply@amicale.com')
     
     # Chemin absolu pour les uploads
     UPLOAD_FOLDER = str(BASE_DIR / 'static' / 'uploads')
+    
+    # Admin credentials from environment
+    ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
 app.config.from_object(RenderConfig)
 
@@ -51,6 +57,15 @@ os.makedirs(upload_folder, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def get_mail_sender():
+    """Retourne l'expéditeur de l'email ou une valeur par défaut"""
+    sender = app.config.get('MAIL_DEFAULT_SENDER')
+    if not sender:
+        sender = app.config.get('MAIL_USERNAME')
+    if not sender:
+        sender = 'noreply@amicale.com'
+    return sender
 
 @app.route('/')
 def index():
@@ -87,7 +102,7 @@ def formulaire():
                 'certificat_residence': 'certificat_residence', 
                 'demande_manuscrite': 'demande_manuscrite',
                 'carte_membre_reed': 'carte_membre_reed',
-                'copie_cni': 'copie_cni'  # Nouveau fichier
+                'copie_cni': 'copie_cni'
             }
             
             files_uploaded = True
@@ -116,7 +131,7 @@ def formulaire():
                 print(f"Erreur d'envoi d'email: {email_error}")
                 # Ne pas bloquer l'enregistrement si l'email échoue
             
-            flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
+            flash('Votre demande a été soumise avec succès!', 'success')
             return redirect(url_for('index'))
             
         except Exception as e:
@@ -142,15 +157,18 @@ La Commission Sociale REED
 Amicale des Étudiants
 """
     
-    msg = Message(
-        subject=subject,
-        recipients=[to_email],
-        body=message,
-        sender=app.config['MAIL_DEFAULT_SENDER']
-    )
-    
-    mail.send(msg)
-    print(f"Email de confirmation envoyé à {to_email}")
+    try:
+        msg = Message(
+            subject=subject,
+            recipients=[to_email],
+            body=message,
+            sender=get_mail_sender()
+        )
+        
+        mail.send(msg)
+        print(f"✓ Email de confirmation envoyé à {to_email}")
+    except Exception as e:
+        print(f"✗ Erreur d'envoi d'email à {to_email}: {e}")
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -161,9 +179,9 @@ def admin_login():
         print(f"\n=== TENTATIVE DE CONNEXION ===")
         print(f"Username: '{username}'")
         print(f"Password: '{password}'")
-        print(f"Attendu: 'admin' / 'admin123'")
+        print(f"Attendu: '{app.config['ADMIN_USERNAME']}' / '{app.config['ADMIN_PASSWORD']}'")
         
-        if username == 'admin' and password == 'admin123':
+        if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASSWORD']:
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
@@ -181,24 +199,35 @@ def admin_dashboard():
         flash('Veuillez vous connecter', 'error')
         return redirect(url_for('admin_login'))
     
-    requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
-    pending_count = StudentRequest.query.filter_by(status='pending').count()
-    approved_count = StudentRequest.query.filter_by(status='approved').count()
-    rejected_count = StudentRequest.query.filter_by(status='rejected').count()
-    
-    return render_template('admin_dashboard.html', 
-                         requests=requests,
-                         pending_count=pending_count,
-                         approved_count=approved_count,
-                         rejected_count=rejected_count)
+    try:
+        requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
+        pending_count = StudentRequest.query.filter_by(status='pending').count()
+        approved_count = StudentRequest.query.filter_by(status='approved').count()
+        rejected_count = StudentRequest.query.filter_by(status='rejected').count()
+        
+        return render_template('admin_dashboard.html', 
+                             requests=requests,
+                             pending_count=pending_count,
+                             approved_count=approved_count,
+                             rejected_count=rejected_count)
+    except Exception as e:
+        print(f"Erreur dans admin_dashboard: {e}")
+        traceback.print_exc()
+        flash(f'Erreur lors du chargement du tableau de bord: {str(e)}', 'error')
+        return redirect(url_for('admin_login'))
 
 @app.route('/admin/view/<int:request_id>')
 def view_request(request_id):
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
     
-    student_request = StudentRequest.query.get_or_404(request_id)
-    return render_template('view_request.html', request=student_request)
+    try:
+        student_request = StudentRequest.query.get_or_404(request_id)
+        return render_template('view_request.html', request=student_request)
+    except Exception as e:
+        print(f"Erreur dans view_request: {e}")
+        flash(f'Erreur lors du chargement de la demande: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/update_status/<int:request_id>', methods=['POST'])
 def update_status(request_id):
@@ -232,6 +261,8 @@ def update_status(request_id):
     
     except Exception as e:
         db.session.rollback()
+        print(f"Erreur dans update_status: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def send_status_email(student, status, notes):
@@ -281,12 +312,12 @@ Amicale des Étudiants
             subject=subject,
             recipients=[student.email],
             body=message,
-            sender=app.config['MAIL_DEFAULT_SENDER']
+            sender=get_mail_sender()
         )
         mail.send(msg)
-        print(f"Email de statut envoyé à {student.email}")
+        print(f"✓ Email de statut envoyé à {student.email}")
     except Exception as e:
-        print(f"Erreur d'envoi d'email de statut: {e}")
+        print(f"✗ Erreur d'envoi d'email de statut à {student.email}: {e}")
 
 @app.route('/admin/send_email', methods=['POST'])
 def send_email():
@@ -312,29 +343,33 @@ def send_email():
         recipients = []
         emails_list = []
         
-        if recipient_type == 'approved':
-            approved_students = StudentRequest.query.filter_by(status='approved').all()
-            recipients = approved_students
-            emails_list = [student.email for student in approved_students if student.email]
-        elif recipient_type == 'rejected':
-            rejected_students = StudentRequest.query.filter_by(status='rejected').all()
-            recipients = rejected_students
-            emails_list = [student.email for student in rejected_students if student.email]
-        elif recipient_type == 'pending':
-            pending_students = StudentRequest.query.filter_by(status='pending').all()
-            recipients = pending_students
-            emails_list = [student.email for student in pending_students if student.email]
-        elif recipient_type == 'selected' and selected_ids:
-            selected_students = StudentRequest.query.filter(StudentRequest.id.in_(selected_ids)).all()
-            recipients = selected_students
-            emails_list = [student.email for student in selected_students if student.email]
-        elif recipient_type == 'custom' and custom_emails:
-            emails_list = [email.strip() for email in custom_emails if email.strip()]
-        else:
-            # Tous les étudiants
-            all_students = StudentRequest.query.all()
-            recipients = all_students
-            emails_list = [student.email for student in all_students if student.email]
+        try:
+            if recipient_type == 'approved':
+                approved_students = StudentRequest.query.filter_by(status='approved').all()
+                recipients = approved_students
+                emails_list = [student.email for student in approved_students if student.email]
+            elif recipient_type == 'rejected':
+                rejected_students = StudentRequest.query.filter_by(status='rejected').all()
+                recipients = rejected_students
+                emails_list = [student.email for student in rejected_students if student.email]
+            elif recipient_type == 'pending':
+                pending_students = StudentRequest.query.filter_by(status='pending').all()
+                recipients = pending_students
+                emails_list = [student.email for student in pending_students if student.email]
+            elif recipient_type == 'selected' and selected_ids:
+                selected_students = StudentRequest.query.filter(StudentRequest.id.in_(selected_ids)).all()
+                recipients = selected_students
+                emails_list = [student.email for student in selected_students if student.email]
+            elif recipient_type == 'custom' and custom_emails:
+                emails_list = [email.strip() for email in custom_emails if email.strip()]
+            else:
+                # Tous les étudiants
+                all_students = StudentRequest.query.all()
+                recipients = all_students
+                emails_list = [student.email for student in all_students if student.email]
+        except Exception as e:
+            print(f"Erreur lors de la récupération des destinataires: {e}")
+            return jsonify({'error': f'Erreur base de données: {str(e)}'}), 500
         
         # Filtrer les emails valides
         valid_emails = [email for email in emails_list if email and '@' in email]
@@ -345,6 +380,8 @@ def send_email():
         # Envoyer les emails
         sent_count = 0
         failed_emails = []
+        
+        sender = get_mail_sender()
         
         for i, email in enumerate(valid_emails):
             try:
@@ -364,11 +401,12 @@ def send_email():
                     subject=subject,
                     recipients=[email],
                     body=personalized_message,
-                    sender=app.config['MAIL_DEFAULT_SENDER']
+                    sender=sender
                 )
                 
                 mail.send(msg)
                 sent_count += 1
+                print(f"✓ Email envoyé à {email}")
                 
                 # Petite pause pour éviter les limites de Gmail
                 if i % 10 == 0 and i > 0:
@@ -376,7 +414,7 @@ def send_email():
                     
             except Exception as e:
                 failed_emails.append({'email': email, 'error': str(e)})
-                print(f"Erreur d'envoi à {email}: {e}")
+                print(f"✗ Erreur d'envoi à {email}: {e}")
         
         # Préparer la réponse
         response_data = {
@@ -387,12 +425,14 @@ def send_email():
         }
         
         if failed_emails:
-            response_data['failed_emails'] = failed_emails[:10]  # Limiter à 10 échecs
+            response_data['failed_emails'] = failed_emails[:10]
             response_data['warning'] = f"{len(failed_emails)} email(s) n'ont pas pu être envoyés"
         
         return jsonify(response_data)
     
     except Exception as e:
+        print(f"Erreur dans send_email: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/download_report')
@@ -500,6 +540,8 @@ def download_report():
                         mimetype='application/pdf')
     
     except Exception as e:
+        print(f"Erreur dans download_report: {e}")
+        traceback.print_exc()
         flash(f'Erreur lors de la génération du rapport: {str(e)}', 'error')
         return redirect(url_for('admin_dashboard'))
 
@@ -531,6 +573,7 @@ def api_students():
             })
         return jsonify(students_data)
     except Exception as e:
+        print(f"Erreur dans api_students: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/stats')
@@ -547,6 +590,7 @@ def api_stats():
         }
         return jsonify(stats)
     except Exception as e:
+        print(f"Erreur dans api_stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/logout')
@@ -561,18 +605,32 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
+    print(f"Erreur 500: {e}")
+    traceback.print_exc()
     return render_template('500.html'), 500
+
+# Route de santé pour Render
+@app.route('/health')
+def health_check():
+    return 'OK', 200
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
-        print("\n" + "="*60)
-        print("APPLICATION DÉMARRÉE")
-        print("="*60)
-        print(f"Environment: {'Production' if not app.debug else 'Development'}")
-        print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI'].split('://')[0]}")
-        print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
-        print("="*60 + "\n")
+        try:
+            db.create_all()
+            print("\n" + "="*60)
+            print("APPLICATION DÉMARRÉE")
+            print("="*60)
+            print(f"Environment: {'Production' if not app.debug else 'Development'}")
+            print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI'].split('://')[0]}")
+            print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
+            print(f"Admin username: {app.config['ADMIN_USERNAME']}")
+            print(f"Mail sender: {get_mail_sender()}")
+            print(f"Mail configured: {bool(app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD'])}")
+            print("="*60 + "\n")
+        except Exception as e:
+            print(f"Erreur lors de l'initialisation: {e}")
+            traceback.print_exc()
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
