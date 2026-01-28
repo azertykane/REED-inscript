@@ -14,15 +14,15 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
-    # Mail configuration - sera remplacée par RenderConfig
+    # Mail configuration
     MAIL_SERVER = 'smtp.gmail.com'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
-    MAIL_USERNAME = None
-    MAIL_PASSWORD = None
-    MAIL_DEFAULT_SENDER = None
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME')
     
-    # Admin credentials (change these in production!)
+    # Admin credentials
     ADMIN_USERNAME = 'admin'
     ADMIN_PASSWORD = 'admin123'
     
