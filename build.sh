@@ -1,15 +1,16 @@
 #!/bin/bash
-# build.sh pour Render
+set -o errexit
 
-echo "=== Installation de Python dépendances ==="
-
-# Mettre à jour pip
-python -m pip install --upgrade pip
-
-# Installer les dépendances
 pip install -r requirements.txt
 
-# Créer le dossier uploads s'il n'existe pas
+# Créer les dossiers nécessaires
 mkdir -p static/uploads
+mkdir -p templates
 
-echo "=== Installation terminée ==="
+# Initialiser la base de données
+python -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+    print('Base de données initialisée')
+"

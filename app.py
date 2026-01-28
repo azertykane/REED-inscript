@@ -609,6 +609,46 @@ def internal_server_error(e):
     traceback.print_exc()
     return render_template('500.html'), 500
 
+# Ajoutez cette fonction avant le démarrage de l'application
+def init_database():
+    """Initialiser la base de données"""
+    with app.app_context():
+        try:
+            db.create_all()
+            print("✓ Base de données initialisée")
+            
+            # Vérifier si la table existe
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            print(f"Tables existantes: {tables}")
+            
+        except Exception as e:
+            print(f"✗ Erreur d'initialisation: {e}")
+            traceback.print_exc()
+
+
+
+def initialize_database():
+    """Crée les tables si elles n'existent pas"""
+    with app.app_context():
+        try:
+            db.create_all()
+            print("✓ Tables de base de données créées/vérifiées")
+            
+            # Vérifiez si la table existe
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            print(f"Tables disponibles: {tables}")
+            
+        except Exception as e:
+            print(f"✗ Erreur lors de l'initialisation de la base de données: {e}")
+            traceback.print_exc()
+
+# Appelez cette fonction avant le démarrage du serveur
+initialize_database()
+
 # Route de santé pour Render
 @app.route('/health')
 def health_check():
@@ -633,4 +673,5 @@ if __name__ == '__main__':
             traceback.print_exc()
     
     port = int(os.environ.get('PORT', 5000))
+    init_database()
     app.run(host='0.0.0.0', port=port, debug=False)
