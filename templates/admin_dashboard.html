@@ -1,0 +1,989 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord Admin - Amicale des Étudiants{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        transition: transform 0.3s;
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .request-item {
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .request-item:hover {
+        background-color: #f8f9fa;
+    }
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .action-buttons .btn {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+    .table th {
+        font-weight: 600;
+        color: #495057;
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+    .avatar-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .icon-wrapper {
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">
+                <i class="fas fa-tachometer-alt me-2"></i>Tableau de bord Administrateur
+            </h1>
+            <p class="text-muted mb-0">Gestion des demandes d'adhésion</p>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('download_report') }}" class="btn btn-primary">
+                <i class="fas fa-download me-2"></i>Télécharger rapport
+            </a>
+            <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger">
+                <i class="fas fa-sign-out-alt me-2"></i>Déconnexion
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-warning">En attente</h6>
+                            <h2 class="mb-0">{{ pending_count }}</h2>
+                            <small class="text-muted">Demandes non traitées</small>
+                        </div>
+                        <div class="icon-wrapper bg-warning bg-opacity-10 p-3 rounded-circle">
+                            <i class="fas fa-clock fa-2x text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-success">Approuvées</h6>
+                            <h2 class="mb-0">{{ approved_count }}</h2>
+                            <small class="text-muted">Demandes acceptées</small>
+                        </div>
+                        <div class="icon-wrapper bg-success bg-opacity-10 p-3 rounded-circle">
+                            <i class="fas fa-check-circle fa-2x text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-danger">Rejetées</h6>
+                            <h2 class="mb-0">{{ rejected_count }}</h2>
+                            <small class="text-muted">Demandes refusées</small>
+                        </div>
+                        <div class="icon-wrapper bg-danger bg-opacity-10 p-3 rounded-circle">
+                            <i class="fas fa-times-circle fa-2x text-danger"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card stat-card border-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title text-primary">Total</h6>
+                            <h2 class="mb-0">{{ requests|length }}</h2>
+                            <small class="text-muted">Toutes les demandes</small>
+                        </div>
+                        <div class="icon-wrapper bg-primary bg-opacity-10 p-3 rounded-circle">
+                            <i class="fas fa-users fa-2x text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="fas fa-bolt me-2 text-warning"></i>Actions rapides
+                    </h5>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="#emailModal" class="btn btn-primary" data-bs-toggle="modal">
+                            <i class="fas fa-paper-plane me-2"></i>Envoyer des emails
+                        </a>
+                        <button class="btn btn-outline-success" onclick="selectAll()">
+                            <i class="fas fa-check-double me-2"></i>Tout sélectionner
+                        </button>
+                        <button class="btn btn-warning" onclick="updateSelected('pending')">
+                            <i class="fas fa-clock me-2"></i>Mettre en attente
+                        </button>
+                        <button class="btn btn-success" onclick="updateSelected('approved')">
+                            <i class="fas fa-check me-2"></i>Approuver
+                        </button>
+                        <button class="btn btn-danger" onclick="updateSelected('rejected')">
+                            <i class="fas fa-times me-2"></i>Rejeter
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="exportSelected()">
+                            <i class="fas fa-file-export me-2"></i>Exporter la sélection
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Filtrer par statut</label>
+                            <select class="form-select" id="statusFilter" onchange="filterTable()">
+                                <option value="all">Tous les statuts</option>
+                                <option value="pending">En attente</option>
+                                <option value="approved">Approuvé</option>
+                                <option value="rejected">Rejeté</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Filtrer par date</label>
+                            <input type="date" class="form-control" id="dateFilter" onchange="filterTable()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Rechercher</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                <input type="text" class="form-control" id="searchInput" 
+                                       placeholder="Nom, prénom, email..." onkeyup="filterTable()">
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">
+                                <i class="fas fa-redo me-2"></i>Réinitialiser
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Requests Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Liste des demandes
+                    <span class="badge bg-primary ms-2" id="requestCount">{{ requests|length }}</span>
+                </h5>
+                <div class="text-muted small">
+                    <span id="selectedCount">0</span> sélectionné(s)
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="requestsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50">
+                                <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                            </th>
+                            <th>ID</th>
+                            <th>Étudiant</th>
+                            <th>Contact</th>
+                            <th>Statut</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in requests %}
+                        <tr class="request-item" data-status="{{ req.status }}" 
+                            data-date="{{ req.date_submitted.strftime('%Y-%m-%d') }}"
+                            data-search="{{ req.nom|lower }} {{ req.prenom|lower }} {{ req.email|lower }} {{ req.telephone }}">
+                            <td>
+                                <input type="checkbox" class="request-checkbox" 
+                                       value="{{ req.id }}" 
+                                       data-name="{{ req.prenom }} {{ req.nom }}"
+                                       data-email="{{ req.email }}"
+                                       onchange="updateSelectionCount()">
+                            </td>
+                            <td>
+                                <span class="fw-semibold">#{{ req.id }}</span>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-circle bg-primary bg-opacity-10 text-primary me-3">
+                                        {{ req.prenom[0]|upper }}{{ req.nom[0]|upper }}
+                                    </div>
+                                    <div>
+                                        <strong>{{ req.nom }} {{ req.prenom }}</strong>
+                                        <div class="small text-muted">{{ req.adresse[:30] }}...</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div>
+                                    <div><i class="fas fa-phone me-1 text-muted"></i> {{ req.telephone }}</div>
+                                    <div><i class="fas fa-envelope me-1 text-muted"></i> {{ req.email }}</div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if req.status == 'pending' %}
+                                <span class="status-badge bg-warning bg-opacity-10 text-warning">
+                                    <i class="fas fa-clock me-1"></i> En attente
+                                </span>
+                                {% elif req.status == 'approved' %}
+                                <span class="status-badge bg-success bg-opacity-10 text-success">
+                                    <i class="fas fa-check me-1"></i> Approuvé
+                                </span>
+                                {% else %}
+                                <span class="status-badge bg-danger bg-opacity-10 text-danger">
+                                    <i class="fas fa-times me-1"></i> Rejeté
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ req.date_submitted.strftime('%d/%m/%Y') }}<br>
+                                <small class="text-muted">{{ req.date_submitted.strftime('%H:%M') }}</small>
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="{{ url_for('view_request', request_id=req.id) }}" 
+                                       class="btn btn-sm btn-outline-primary" 
+                                       title="Voir détails">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-success" 
+                                            onclick="updateStatus({{ req.id }}, 'approved', event)"
+                                            title="Approuver">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            onclick="updateStatus({{ req.id }}, 'rejected', event)"
+                                            title="Rejeter">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info" 
+                                            onclick="selectForEmail({{ req.id }}, '{{ req.prenom }} {{ req.nom }}', '{{ req.email }}')"
+                                            title="Sélectionner pour email">
+                                        <i class="fas fa-envelope"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if requests|length == 0 %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-inbox fa-2x mb-3"></i>
+                                    <h5>Aucune demande trouvée</h5>
+                                    <p>Les demandes soumises apparaîtront ici.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white border-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small">
+                    Affichage de <span id="visibleCount">{{ requests|length }}</span> sur {{ requests|length }} demandes
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previousPage()">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="nextPage()">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Email Modal -->
+<div class="modal fade" id="emailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-envelope me-2"></i>Envoyer des emails
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Pour un contrôle plus avancé de l'envoi d'emails, utilisez l'outil dédié.
+                </div>
+                
+                <form id="emailForm">
+                    <div class="mb-3">
+                        <label class="form-label">Destinataires</label>
+                        <select class="form-select" id="recipientType" required>
+                            <option value="">Sélectionner...</option>
+                            <option value="all">Tous les étudiants</option>
+                            <option value="approved">Étudiants approuvés uniquement</option>
+                            <option value="rejected">Étudiants rejetés uniquement</option>
+                            <option value="pending">Étudiants en attente uniquement</option>
+                            <option value="selected">Destinataires sélectionnés dans le tableau</option>
+                            <option value="compose">Utiliser l'éditeur avancé</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3" id="selectedInfo" style="display: none;">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-users me-2"></i>
+                            <span id="selectedCountText">0</span> étudiant(s) sélectionné(s)
+                            <a href="#" onclick="openEmailComposer()" class="float-end">
+                                Ouvrir dans l'éditeur <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Sujet *</label>
+                        <input type="text" class="form-control" id="emailSubject" required 
+                               placeholder="Ex: Résultat de votre demande d'adhésion">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Message *</label>
+                        <textarea class="form-control" id="emailMessage" rows="6" required
+                                  placeholder="Rédigez votre message ici..."></textarea>
+                        <small class="text-muted">
+                            Variables disponibles : {nom}, {prenom}, {id}, {date}
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Modèles prédéfinis</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" 
+                                    onclick="loadTemplate('acceptance')">
+                                Acceptation
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" 
+                                    onclick="loadTemplate('rejection')">
+                                Rejet
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" 
+                                    onclick="loadTemplate('pending')">
+                                En attente
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="sendQuickEmail()">
+                    <i class="fas fa-paper-plane me-2"></i>Envoyer
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="openEmailComposer()">
+                    <i class="fas fa-external-link-alt me-2"></i>Éditeur avancé
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalTitle">Confirmation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="confirmModalBody">
+                <!-- Content will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="confirmModalAction">Confirmer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global variables
+let selectedRequests = new Set();
+let selectedStudents = [];
+let currentPage = 1;
+const itemsPerPage = 10;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateSelectionCount();
+    document.getElementById('recipientType').addEventListener('change', updateEmailModal);
+    loadTemplates();
+});
+
+// Toggle select all checkboxes
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.request-checkbox');
+    const visibleRows = document.querySelectorAll('#requestsTable tbody tr:not([style*="display: none"]) .request-checkbox');
+    
+    visibleRows.forEach(cb => {
+        cb.checked = checkbox.checked;
+        if (checkbox.checked) {
+            selectedRequests.add(parseInt(cb.value));
+            if (!selectedStudents.some(s => s.id === parseInt(cb.value))) {
+                selectedStudents.push({
+                    id: parseInt(cb.value),
+                    nom: cb.dataset.name,
+                    email: cb.dataset.email
+                });
+            }
+        } else {
+            selectedRequests.delete(parseInt(cb.value));
+            selectedStudents = selectedStudents.filter(s => s.id !== parseInt(cb.value));
+        }
+    });
+    
+    updateSelectionCount();
+    updateEmailModal();
+}
+
+// Select all visible rows
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.request-checkbox:visible');
+    checkboxes.forEach(cb => {
+        cb.checked = true;
+        selectedRequests.add(parseInt(cb.value));
+        if (!selectedStudents.some(s => s.id === parseInt(cb.value))) {
+            selectedStudents.push({
+                id: parseInt(cb.value),
+                nom: cb.dataset.name,
+                email: cb.dataset.email
+            });
+        }
+    });
+    document.getElementById('selectAll').checked = checkboxes.length > 0;
+    updateSelectionCount();
+    updateEmailModal();
+}
+
+// Update selection count display
+function updateSelectionCount() {
+    const checkboxes = document.querySelectorAll('.request-checkbox:checked');
+    const count = checkboxes.length;
+    
+    document.getElementById('selectedCount').textContent = count;
+    
+    // Update selectedRequests set
+    selectedRequests.clear();
+    selectedStudents = [];
+    checkboxes.forEach(cb => {
+        selectedRequests.add(parseInt(cb.value));
+        selectedStudents.push({
+            id: parseInt(cb.value),
+            nom: cb.dataset.name,
+            email: cb.dataset.email
+        });
+    });
+    
+    updateEmailModal();
+}
+
+// Filter table based on filters
+function filterTable() {
+    const statusFilter = document.getElementById('statusFilter').value;
+    const dateFilter = document.getElementById('dateFilter').value;
+    const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+    
+    const rows = document.querySelectorAll('#requestsTable tbody tr');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const status = row.dataset.status;
+        const date = row.dataset.date;
+        const searchText = row.dataset.search;
+        
+        let showRow = true;
+        
+        // Apply status filter
+        if (statusFilter !== 'all' && status !== statusFilter) {
+            showRow = false;
+        }
+        
+        // Apply date filter
+        if (dateFilter && date !== dateFilter) {
+            showRow = false;
+        }
+        
+        // Apply search filter
+        if (searchQuery && !searchText.includes(searchQuery)) {
+            showRow = false;
+        }
+        
+        row.style.display = showRow ? '' : 'none';
+        if (showRow) visibleCount++;
+    });
+    
+    document.getElementById('visibleCount').textContent = visibleCount;
+    document.getElementById('selectAll').checked = false;
+}
+
+// Reset all filters
+function resetFilters() {
+    document.getElementById('statusFilter').value = 'all';
+    document.getElementById('dateFilter').value = '';
+    document.getElementById('searchInput').value = '';
+    filterTable();
+}
+
+// Update status of a single request
+async function updateStatus(requestId, status, event = null) {
+    if (event) event.stopPropagation();
+    
+    const notes = prompt('Notes (optionnel):');
+    if (notes === null) return;
+    
+    showLoading();
+    
+    try {
+        const response = await fetch(`/admin/update_status/${requestId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                status: status,
+                notes: notes || ''
+            })
+        });
+        
+        if (response.ok) {
+            showSuccess('Statut mis à jour avec succès!');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showError('Erreur lors de la mise à jour');
+        }
+    } catch (error) {
+        showError('Erreur: ' + error);
+    }
+}
+
+// Update status of selected requests
+async function updateSelected(status) {
+    if (selectedRequests.size === 0) {
+        showError('Veuillez sélectionner au moins une demande');
+        return;
+    }
+    
+    const notes = prompt('Notes pour toutes les demandes sélectionnées (optionnel):');
+    if (notes === null) return;
+    
+    showLoading(`Mise à jour de ${selectedRequests.size} demande(s)...`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const requestId of selectedRequests) {
+        try {
+            await fetch(`/admin/update_status/${requestId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    status: status,
+                    notes: notes
+                })
+            });
+            successCount++;
+        } catch (error) {
+            errorCount++;
+            console.error('Error updating request', requestId, error);
+        }
+    }
+    
+    hideLoading();
+    
+    if (errorCount === 0) {
+        showSuccess(`${successCount} demande(s) mises à jour avec succès!`);
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        showWarning(`${successCount} mise(s) à jour réussie(s), ${errorCount} erreur(s)`);
+    }
+}
+
+// Export selected requests
+function exportSelected() {
+    if (selectedRequests.size === 0) {
+        showError('Veuillez sélectionner au moins une demande');
+        return;
+    }
+    
+    // Create CSV content
+    let csvContent = "ID,Nom,Prénom,Email,Téléphone,Statut,Date\n";
+    
+    selectedStudents.forEach(student => {
+        const row = document.querySelector(`tr[data-search*="${student.email.toLowerCase()}"]`);
+        if (row) {
+            const cells = row.querySelectorAll('td');
+            csvContent += `${student.id},${student.nom.split(' ')[1]},${student.nom.split(' ')[0]},${student.email},${cells[3].textContent.trim().split('\n')[0].replace(' ', '')},${row.dataset.status},${row.dataset.date}\n`;
+        }
+    });
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `export_demandes_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    showSuccess('Export terminé!');
+}
+
+// Update email modal based on selection
+function updateEmailModal() {
+    const type = document.getElementById('recipientType').value;
+    const selectedInfo = document.getElementById('selectedInfo');
+    const selectedCountText = document.getElementById('selectedCountText');
+    
+    if (type === 'selected') {
+        selectedInfo.style.display = 'block';
+        selectedCountText.textContent = selectedRequests.size;
+    } else {
+        selectedInfo.style.display = 'none';
+    }
+}
+
+// Select student for email
+function selectForEmail(studentId, studentName, studentEmail) {
+    if (selectedStudents.some(s => s.id === studentId)) {
+        // Already selected, remove it
+        selectedStudents = selectedStudents.filter(s => s.id !== studentId);
+        selectedRequests.delete(studentId);
+        
+        // Uncheck the checkbox
+        const checkbox = document.querySelector(`.request-checkbox[value="${studentId}"]`);
+        if (checkbox) checkbox.checked = false;
+    } else {
+        // Add to selection
+        selectedStudents.push({
+            id: studentId,
+            nom: studentName,
+            email: studentEmail
+        });
+        selectedRequests.add(studentId);
+        
+        // Check the checkbox
+        const checkbox = document.querySelector(`.request-checkbox[value="${studentId}"]`);
+        if (checkbox) checkbox.checked = true;
+    }
+    
+    updateSelectionCount();
+    updateEmailModal();
+    
+    // If email modal is open, update it
+    if (document.getElementById('emailModal').classList.contains('show')) {
+        updateEmailModal();
+    }
+}
+
+// Load email template
+function loadTemplate(templateType) {
+    let subject = '';
+    let message = '';
+    
+    switch(templateType) {
+        case 'acceptance':
+            subject = 'Félicitations ! Votre demande d\'adhésion a été acceptée';
+            message = `Cher(e) {prenom} {nom},
+
+Nous avons le plaisir de vous informer que votre demande d'adhésion à l'Amicale des Étudiants (ID: {id}) a été approuvée.
+
+Bienvenue dans notre communauté !
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'rejection':
+            subject = 'Décision concernant votre demande d\'adhésion';
+            message = `Cher(e) {prenom} {nom},
+
+Après examen de votre demande d'adhésion (ID: {id}), nous regrettons de vous informer qu'elle n'a pas pu être acceptée pour le moment.
+
+Nous vous remercions de votre intérêt et vous souhaitons bonne continuation.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'pending':
+            subject = 'Mise à jour sur votre demande d\'adhésion';
+            message = `Cher(e) {prenom} {nom},
+
+Votre demande d'adhésion (ID: {id}) est actuellement en cours de traitement par notre équipe.
+
+Nous vous contacterons dès que nous aurons une décision.
+
+Merci pour votre patience.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+    }
+    
+    document.getElementById('emailSubject').value = subject;
+    document.getElementById('emailMessage').value = message;
+}
+
+// Send quick email from modal
+async function sendQuickEmail() {
+    const recipientType = document.getElementById('recipientType').value;
+    const subject = document.getElementById('emailSubject').value;
+    const message = document.getElementById('emailMessage').value;
+    
+    if (!recipientType || !subject || !message) {
+        showError('Veuillez remplir tous les champs obligatoires');
+        return;
+    }
+    
+    if (recipientType === 'selected' && selectedRequests.size === 0) {
+        showError('Veuillez sélectionner au moins un destinataire');
+        return;
+    }
+    
+    if (recipientType === 'compose') {
+        openEmailComposer();
+        return;
+    }
+    
+    showLoading('Préparation de l\'envoi...');
+    
+    try {
+        const response = await fetch('/admin/send_email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                recipient_type: recipientType,
+                subject: subject,
+                message: message,
+                custom_emails: [],
+                selected_ids: recipientType === 'selected' ? Array.from(selectedRequests) : []
+            })
+        });
+        
+        const result = await response.json();
+        
+        hideLoading();
+        
+        if (response.ok) {
+            showSuccess(result.message || 'Email(s) envoyé(s) avec succès!');
+            const modal = bootstrap.Modal.getInstance(document.getElementById('emailModal'));
+            if (modal) modal.hide();
+            document.getElementById('emailForm').reset();
+        } else {
+            showError('Erreur: ' + (result.error || 'Échec de l\'envoi'));
+        }
+    } catch (error) {
+        hideLoading();
+        showError('Erreur: ' + error);
+    }
+}
+
+// Open advanced email composer
+function openEmailComposer() {
+    // Store selected students in sessionStorage for the composer page
+    sessionStorage.setItem('selectedStudents', JSON.stringify(selectedStudents));
+    
+    // Open new page
+    window.open('/admin/email_compose', '_blank');
+    
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('emailModal'));
+    if (modal) modal.hide();
+}
+
+// Load templates from localStorage
+function loadTemplates() {
+    const templates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
+    // You can implement template management here
+}
+
+// Notification functions
+function showLoading(message = 'Chargement...') {
+    // Create or show loading overlay
+    let overlay = document.getElementById('loadingOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'loadingOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        `;
+        overlay.innerHTML = `
+            <div class="bg-white p-4 rounded shadow-lg text-center">
+                <div class="spinner-border text-primary mb-3"></div>
+                <div>${message}</div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    } else {
+        overlay.style.display = 'flex';
+        overlay.querySelector('div > div:last-child').textContent = message;
+    }
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function showSuccess(message) {
+    showNotification(message, 'success');
+}
+
+function showError(message) {
+    showNotification(message, 'danger');
+}
+
+function showWarning(message) {
+    showNotification(message, 'warning');
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = `
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        min-width: 300px;
+        max-width: 500px;
+    `;
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Pagination functions
+function previousPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        updatePagination();
+    }
+}
+
+function nextPage() {
+    const totalItems = document.querySelectorAll('#requestsTable tbody tr:not([style*="display: none"])').length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
+    if (currentPage < totalPages) {
+        currentPage++;
+        updatePagination();
+    }
+}
+
+function updatePagination() {
+    const rows = document.querySelectorAll('#requestsTable tbody tr:not([style*="display: none"])');
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    
+    rows.forEach((row, index) => {
+        row.style.display = (index >= startIndex && index < endIndex) ? '' : 'none';
+    });
+}
+
+// Responsive adjustments
+if (window.matchMedia("(max-width: 768px)").matches) {
+    document.querySelectorAll('.action-buttons').forEach(container => {
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '2px';
+        
+        container.querySelectorAll('.btn').forEach(btn => {
+            btn.style.width = '100%';
+        });
+    });
+}
+</script>
+{% endblock %}

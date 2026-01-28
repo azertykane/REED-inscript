@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block title %}Composer Email - Amicale des Étudiants{% endblock %}
+
+{% block extra_css %}
+<style>
+    .recipient-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    .recipient-item {
+        padding: 5px 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .recipient-item:last-child {
+        border-bottom: none;
+    }
+    .template-btn {
+        margin: 2px;
+    }
+    .preview-section {
+        background: #f8f9fa;
+        border-left: 4px solid #3B82F6;
+        padding: 15px;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">
+            <i class="fas fa-envelope me-2"></i>Composer un Email
+        </h1>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
+            <i class="fas fa-arrow-left me-2"></i>Retour au tableau de bord
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-paper-plane me-2"></i>Nouveau Message
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="emailForm">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Type de destinataires</label>
+                                <select class="form-select" id="recipientType" required>
+                                    <option value="">Sélectionner...</option>
+                                    <option value="all">Tous les étudiants</option>
+                                    <option value="approved">Étudiants approuvés uniquement</option>
+                                    <option value="rejected">Étudiants rejetés uniquement</option>
+                                    <option value="pending">Étudiants en attente uniquement</option>
+                                    <option value="selected">Destinataires sélectionnés</option>
+                                    <option value="custom">Liste personnalisée</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Nombre de destinataires</label>
+                                <div class="form-control" id="recipientCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="selectedRecipientsSection" style="display: none;">
+                            <label class="form-label">Destinataires sélectionnés</label>
+                            <div id="selectedRecipients" class="recipient-list">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="customEmailsSection" style="display: none;">
+                            <label class="form-label">Adresses email (une par ligne ou séparées par des virgules)</label>
+                            <textarea class="form-control" id="customEmails" rows="4" 
+                                      placeholder="exemple1@email.com&#10;exemple2@email.com"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Sujet *</label>
+                            <input type="text" class="form-control" id="subject" required 
+                                   placeholder="Ex: Résultat de votre demande d'adhésion">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Message *</label>
+                            <textarea class="form-control" id="message" rows="10" required
+                                      placeholder="Rédigez votre message ici..."></textarea>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">Modèles prédéfinis</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-outline-primary template-btn" 
+                                        onclick="loadTemplate('acceptance')">
+                                    <i class="fas fa-check me-1"></i>Acceptation
+                                </button>
+                                <button type="button" class="btn btn-outline-danger template-btn" 
+                                        onclick="loadTemplate('rejection')">
+                                    <i class="fas fa-times me-1"></i>Rejet
+                                </button>
+                                <button type="button" class="btn btn-outline-warning template-btn" 
+                                        onclick="loadTemplate('pending')">
+                                    <i class="fas fa-clock me-1"></i>En attente
+                                </button>
+                                <button type="button" class="btn btn-outline-info template-btn" 
+                                        onclick="loadTemplate('reminder')">
+                                    <i class="fas fa-bell me-1"></i>Rappel
+                                </button>
+                                <button type="button" class="btn btn-outline-success template-btn" 
+                                        onclick="loadTemplate('welcome')">
+                                    <i class="fas fa-users me-1"></i>Bienvenue
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="preview-section mb-4">
+                            <h6><i class="fas fa-eye me-2"></i>Aperçu des destinataires</h6>
+                            <div id="recipientPreview" class="small text-muted">
+                                Aucun destinataire sélectionné
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-outline-secondary" onclick="previewEmail()">
+                                <i class="fas fa-eye me-2"></i>Aperçu complet
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="sendEmail()">
+                                <i class="fas fa-paper-plane me-2"></i>Envoyer l'email
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Informations
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <h6>Variables disponibles</h6>
+                    <ul class="small">
+                        <li><code>{nom}</code> : Nom de l'étudiant</li>
+                        <li><code>{prenom}</code> : Prénom de l'étudiant</li>
+                        <li><code>{id}</code> : ID de la demande</li>
+                        <li><code>{date}</code> : Date de soumission</li>
+                    </ul>
+                    
+                    <hr>
+                    
+                    <h6>Statistiques</h6>
+                    <ul class="small mb-0">
+                        <li>Total étudiants : <span id="statsTotal">0</span></li>
+                        <li>Approuvés : <span id="statsApproved">0</span></li>
+                        <li>Rejetés : <span id="statsRejected">0</span></li>
+                        <li>En attente : <span id="statsPending">0</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-warning text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>Derniers envois
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="emailHistory">
+                        <p class="text-muted small mb-0">Aucun historique pour le moment</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-eye me-2"></i>Aperçu de l'email
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong>À :</strong> <span id="previewTo"></span>
+                </div>
+                <div class="mb-3">
+                    <strong>Sujet :</strong> <span id="previewSubject"></span>
+                </div>
+                <hr>
+                <div id="previewMessage" class="border p-3 bg-light rounded">
+                    <!-- Message preview will be inserted here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                <button type="button" class="btn btn-primary" onclick="sendEmail()">
+                    <i class="fas fa-paper-plane me-2"></i>Confirmer l'envoi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global variables
+let allStudents = [];
+let selectedStudents = [];
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadEmailHistory();
+    
+    document.getElementById('recipientType').addEventListener('change', updateRecipientDisplay);
+    
+    // Load students data
+    fetch('/admin/api/students')
+        .then(response => response.json())
+        .then(data => {
+            allStudents = data;
+            updateStats();
+            updateRecipientDisplay();
+        })
+        .catch(error => console.error('Error loading students:', error));
+});
+
+// Load statistics
+function loadStats() {
+    fetch('/admin/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('statsTotal').textContent = data.total || 0;
+            document.getElementById('statsApproved').textContent = data.approved || 0;
+            document.getElementById('statsRejected').textContent = data.rejected || 0;
+            document.getElementById('statsPending').textContent = data.pending || 0;
+        });
+}
+
+// Load email history
+function loadEmailHistory() {
+    // In a real app, you would fetch this from the server
+    const history = [
+        { date: '2024-01-15', subject: 'Bienvenue aux nouveaux membres', count: 12 },
+        { date: '2024-01-10', subject: 'Rappel documents manquants', count: 5 },
+        { date: '2024-01-05', subject: 'Notifications d\'acceptation', count: 8 }
+    ];
+    
+    const historyDiv = document.getElementById('emailHistory');
+    historyDiv.innerHTML = '';
+    
+    history.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'mb-2';
+        div.innerHTML = `
+            <div class="small text-muted">${item.date}</div>
+            <div class="fw-semibold">${item.subject}</div>
+            <div class="text-muted">${item.count} destinataires</div>
+        `;
+        historyDiv.appendChild(div);
+    });
+}
+
+// Update recipient display based on selection
+function updateRecipientDisplay() {
+    const type = document.getElementById('recipientType').value;
+    const customSection = document.getElementById('customEmailsSection');
+    const selectedSection = document.getElementById('selectedRecipientsSection');
+    const countSpan = document.getElementById('recipientCount');
+    const previewDiv = document.getElementById('recipientPreview');
+    
+    let recipients = [];
+    let count = 0;
+    
+    switch(type) {
+        case 'all':
+            recipients = allStudents;
+            break;
+        case 'approved':
+            recipients = allStudents.filter(s => s.status === 'approved');
+            break;
+        case 'rejected':
+            recipients = allStudents.filter(s => s.status === 'rejected');
+            break;
+        case 'pending':
+            recipients = allStudents.filter(s => s.status === 'pending');
+            break;
+        case 'selected':
+            recipients = selectedStudents;
+            break;
+        case 'custom':
+            // Will be handled separately
+            break;
+    }
+    
+    // Show/hide sections
+    customSection.style.display = type === 'custom' ? 'block' : 'none';
+    selectedSection.style.display = type === 'selected' ? 'block' : 'none';
+    
+    // Update count
+    if (type === 'custom') {
+        const emails = document.getElementById('customEmails').value
+            .split(/[\n,]/)
+            .map(email => email.trim())
+            .filter(email => email);
+        count = emails.length;
+    } else {
+        count = recipients.length;
+    }
+    
+    countSpan.textContent = count;
+    
+    // Update preview
+    if (count === 0) {
+        previewDiv.textContent = 'Aucun destinataire sélectionné';
+    } else if (count <= 5) {
+        const names = recipients.slice(0, 5).map(s => `${s.prenom} ${s.nom}`).join(', ');
+        previewDiv.textContent = names;
+    } else {
+        previewDiv.textContent = `${recipients[0].prenom} ${recipients[0].nom} et ${count - 1} autres`;
+    }
+    
+    // Update selected recipients list
+    if (type === 'selected') {
+        updateSelectedRecipientsList();
+    }
+}
+
+// Update selected recipients list display
+function updateSelectedRecipientsList() {
+    const listDiv = document.getElementById('selectedRecipients');
+    listDiv.innerHTML = '';
+    
+    if (selectedStudents.length === 0) {
+        listDiv.innerHTML = '<p class="text-muted small mb-0">Aucun étudiant sélectionné</p>';
+        return;
+    }
+    
+    selectedStudents.forEach(student => {
+        const div = document.createElement('div');
+        div.className = 'recipient-item d-flex justify-content-between align-items-center';
+        div.innerHTML = `
+            <div>
+                <strong>${student.prenom} ${student.nom}</strong>
+                <div class="small text-muted">${student.email}</div>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeSelected(${student.id})">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        listDiv.appendChild(div);
+    });
+}
+
+// Remove student from selected list
+function removeSelected(studentId) {
+    selectedStudents = selectedStudents.filter(s => s.id !== studentId);
+    updateRecipientDisplay();
+}
+
+// Load email template
+function loadTemplate(templateType) {
+    let subject = '';
+    let message = '';
+    
+    switch(templateType) {
+        case 'acceptance':
+            subject = 'Félicitations ! Votre demande d\'adhésion a été acceptée';
+            message = `Cher(e) {prenom} {nom},
+
+Nous avons le plaisir de vous informer que votre demande d'adhésion à l'Amicale des Étudiants (ID: {id}) a été approuvée.
+
+Bienvenue dans notre communauté !
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'rejection':
+            subject = 'Décision concernant votre demande d\'adhésion';
+            message = `Cher(e) {prenom} {nom},
+
+Après examen de votre demande d'adhésion (ID: {id}), nous regrettons de vous informer qu'elle n'a pas pu être acceptée pour le moment.
+
+Nous vous remercions de votre intérêt et vous souhaitons bonne continuation.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'pending':
+            subject = 'Mise à jour sur votre demande d\'adhésion';
+            message = `Cher(e) {prenom} {nom},
+
+Votre demande d'adhésion (ID: {id}) est actuellement en cours de traitement par notre équipe.
+
+Nous vous contacterons dès que nous aurons une décision.
+
+Merci pour votre patience.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'reminder':
+            subject = 'Rappel : Documents manquants pour votre demande';
+            message = `Cher(e) {prenom} {nom},
+
+Nous avons remarqué que certains documents requis pour votre demande d'adhésion (ID: {id}) sont manquants.
+
+Veuillez les fournir dans les plus brefs délais pour permettre le traitement de votre dossier.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+            
+        case 'welcome':
+            subject = 'Bienvenue à l\'Amicale des Étudiants !';
+            message = `Cher(e) {prenom} {nom},
+
+Bienvenue à l'Amicale des Étudiants !
+
+Nous sommes ravis de vous accueillir parmi nous. En tant que nouveau membre, vous avez désormais accès à tous nos avantages et événements.
+
+N'hésitez pas à nous contacter si vous avez des questions.
+
+Cordialement,
+L'équipe de l'Amicale des Étudiants`;
+            break;
+    }
+    
+    document.getElementById('subject').value = subject;
+    document.getElementById('message').value = message;
+}
+
+// Preview email before sending
+function previewEmail() {
+    const subject = document.getElementById('subject').value;
+    const message = document.getElementById('message').value;
+    const recipientType = document.getElementById('recipientType').value;
+    
+    if (!subject || !message) {
+        alert('Veuillez remplir le sujet et le message');
+        return;
+    }
+    
+    // Update preview modal
+    document.getElementById('previewSubject').textContent = subject;
+    document.getElementById('previewMessage').textContent = message;
+    
+    // Show recipient info
+    let recipientInfo = '';
+    switch(recipientType) {
+        case 'all':
+            recipientInfo = 'Tous les étudiants';
+            break;
+        case 'approved':
+            recipientInfo = 'Étudiants approuvés uniquement';
+            break;
+        case 'rejected':
+            recipientInfo = 'Étudiants rejetés uniquement';
+            break;
+        case 'pending':
+            recipientInfo = 'Étudiants en attente uniquement';
+            break;
+        case 'selected':
+            recipientInfo = `${selectedStudents.length} étudiant(s) sélectionné(s)`;
+            break;
+        case 'custom':
+            const emails = document.getElementById('customEmails').value
+                .split(/[\n,]/)
+                .map(email => email.trim())
+                .filter(email => email);
+            recipientInfo = `${emails.length} adresse(s) email personnalisée(s)`;
+            break;
+    }
+    document.getElementById('previewTo').textContent = recipientInfo;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+    modal.show();
+}
+
+// Send email
+async function sendEmail() {
+    const recipientType = document.getElementById('recipientType').value;
+    const subject = document.getElementById('subject').value;
+    const message = document.getElementById('message').value;
+    
+    if (!recipientType || !subject || !message) {
+        alert('Veuillez remplir tous les champs obligatoires');
+        return;
+    }
+    
+    let customEmails = [];
+    if (recipientType === 'custom') {
+        customEmails = document.getElementById('customEmails').value
+            .split(/[\n,]/)
+            .map(email => email.trim())
+            .filter(email => email);
+        
+        if (customEmails.length === 0) {
+            alert('Veuillez saisir au moins une adresse email');
+            return;
+        }
+    }
+    
+    if (recipientType === 'selected' && selectedStudents.length === 0) {
+        alert('Veuillez sélectionner au moins un étudiant');
+        return;
+    }
+    
+    if (!confirm(`Êtes-vous sûr de vouloir envoyer cet email ?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/send_email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                recipient_type: recipientType,
+                subject: subject,
+                message: message,
+                custom_emails: customEmails,
+                selected_ids: recipientType === 'selected' ? selectedStudents.map(s => s.id) : []
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message || 'Email(s) envoyé(s) avec succès!');
+            
+            // Reset form
+            document.getElementById('emailForm').reset();
+            selectedStudents = [];
+            updateRecipientDisplay();
+            loadEmailHistory();
+            
+            // Close preview modal if open
+            const modal = bootstrap.Modal.getInstance(document.getElementById('previewModal'));
+            if (modal) modal.hide();
+        } else {
+            alert('Erreur: ' + (result.error || 'Échec de l\'envoi'));
+        }
+    } catch (error) {
+        alert('Erreur: ' + error);
+    }
+}
+
+// Update statistics display
+function updateStats() {
+    const stats = {
+        total: allStudents.length,
+        approved: allStudents.filter(s => s.status === 'approved').length,
+        rejected: allStudents.filter(s => s.status === 'rejected').length,
+        pending: allStudents.filter(s => s.status === 'pending').length
+    };
+    
+    document.getElementById('statsTotal').textContent = stats.total;
+    document.getElementById('statsApproved').textContent = stats.approved;
+    document.getElementById('statsRejected').textContent = stats.rejected;
+    document.getElementById('statsPending').textContent = stats.pending;
+}
+
+// Function to select students from dashboard (called from admin_dashboard.html)
+function selectStudent(studentId, studentName, studentEmail) {
+    // Check if already selected
+    if (selectedStudents.some(s => s.id === studentId)) {
+        return;
+    }
+    
+    selectedStudents.push({
+        id: studentId,
+        nom: studentName.split(' ')[0],
+        prenom: studentName.split(' ')[1] || '',
+        email: studentEmail
+    });
+    
+    // If on email compose page, update display
+    if (window.location.pathname.includes('email_compose')) {
+        updateRecipientDisplay();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - Amicale des Étudiants{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold mb-4">Bienvenue au Rassemblement des Élèves et Étudiants De Diamniadio</h1>
+                <p class="lead mb-4">Rejoignez notre communauté étudiante pour profiter de nombreux avantages, événements et opportunités.</p>
+                <div class="d-flex gap-3">
+                    <a href="{{ url_for('formulaire') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-file-alt me-2"></i> Faire une demande
+                    </a>
+                    <a href="#about" class="btn btn-outline-light btn-lg">
+                        <i class="fas fa-info-circle me-2"></i> En savoir plus
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="hero-image">
+                    <img src="{{ url_for('static', filename='logo.png')}}" 
+                         alt="Étudiants" class="img-fluid rounded">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="py-5" id="about">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="section-title">Pourquoi rejoindre l'Amicale ?</h2>
+                <p class="text-muted">Découvrez tous les avantages de devenir membre</p>
+            </div>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <h4>Événements exclusifs</h4>
+                    <p>Participez à des événements, sorties et activités réservés aux membres.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fasfa-handshake"></i>
+                    </div>
+                    <h4>Réseau étudiant</h4>
+                    <p>Élargissez votre réseau professionnel et rencontrez d'autres étudiants.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-percentage"></i>
+                    </div>
+                    <h4>Avantages & Réductions</h4>
+                    <p>Bénéficiez de réductions chez nos partenaires et de nombreux avantages.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5 bg-light">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h2 class="mb-4">Comment faire une demande ?</h2>
+                <div class="process-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h5>Remplissez le formulaire</h5>
+                        <p>Fournissez vos informations personnelles et documents requis.</p>
+                    </div>
+                </div>
+                <div class="process-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h5>Téléchargez vos documents</h5>
+                        <p>Importez les documents nécessaires (PDF, JPG ou PNG).</p>
+                    </div>
+                </div>
+                <div class="process-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h5>Soumettez votre demande</h5>
+                        <p>Notre équipe traitera votre demande sous 48h.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card form-preview">
+                    <div class="card-body">
+                        <h4 class="card-title">Documents requis :</h4>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item">
+                                <i class="fas fa-file-pdf text-danger me-2"></i>
+                                Certificat d'inscription ou carte étudiant
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-file-pdf text-danger me-2"></i>
+                                Certificat de résidence
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-file-pdf text-danger me-2"></i>
+                                Demande manuscrite
+                            </li>
+                            <li class="list-group-item">
+                                <i class="fas fa-file-pdf text-danger me-2"></i>
+                                Carte membre REED
+                            </li>
+                        </ul>
+                        <div class="text-center mt-4">
+                            <a href="{{ url_for('formulaire') }}" class="btn btn-primary btn-lg">
+                                <i class="fas fa-rocket me-2"></i> Commencer maintenant
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

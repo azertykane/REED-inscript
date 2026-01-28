@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion Admin - Amicale des Étudiants{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-primary text-white text-center py-4">
+                    <h3><i class="fas fa-user-shield me-2"></i>Espace Administrateur</h3>
+                </div>
+                <div class="card-body p-4">
+                    <!-- Test: Formulaire simple sans required HTML5 -->
+                    <form method="POST" action="{{ url_for('admin_login') }}" id="loginForm">
+                        <div class="mb-4 text-center">
+                            <i class="fas fa-lock fa-3x text-primary mb-3"></i>
+                            <p class="text-muted">Accès réservé au responsable de l'Amicale</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="username" class="form-label">
+                                <i class="fas fa-user me-2"></i>Nom d'utilisateur
+                            </label>
+                            <input type="text" class="form-control" id="username" name="username">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="password" class="form-label">
+                                <i class="fas fa-key me-2"></i>Mot de passe
+                            </label>
+                            <input type="password" class="form-control" id="password" name="password">
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" id="loginBtn">
+                                <i class="fas fa-sign-in-alt me-2"></i>Se connecter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center py-3">
+                    <small class="text-muted">Identifiants: admin / admin123</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+// Désactiver temporairement la validation JS pour tester
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+    // Ne rien faire, laisser le formulaire s'envoyer normalement
+    console.log('Formulaire en cours d\'envoi...');
+});
+</script>
+{% endblock %}
+{% endblock %}

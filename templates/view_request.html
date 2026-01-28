@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Détails de la Demande - Amicale des Étudiants{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h2">
+            <i class="fas fa-file-alt me-2"></i>Demande #{{ request.id }}
+        </h1>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
+            <i class="fas fa-arrow-left me-2"></i>Retour au tableau de bord
+        </a>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-user-graduate me-2"></i>Informations de l'étudiant
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Nom</label>
+                    <p class="fs-5">{{ request.nom }}</p>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Prénom</label>
+                    <p class="fs-5">{{ request.prenom }}</p>
+                </div>
+                <div class="col-12 mb-3">
+                    <label class="form-label text-muted">Adresse</label>
+                    <p class="fs-5">{{ request.adresse }}</p>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Téléphone</label>
+                    <p class="fs-5">{{ request.telephone }}</p>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Email</label>
+                    <p class="fs-5">{{ request.email }}</p>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Statut</label>
+                    <p>
+                        {% if request.status == 'pending' %}
+                        <span class="badge bg-warning">En attente</span>
+                        {% elif request.status == 'approved' %}
+                        <span class="badge bg-success">Approuvé</span>
+                        {% else %}
+                        <span class="badge bg-danger">Rejeté</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">Date de soumission</label>
+                    <p class="fs-5">{{ request.date_submitted.strftime('%d/%m/%Y %H:%M') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-file-pdf me-2"></i>Documents
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-graduation-cap fa-3x text-primary mb-3"></i>
+                            <h6>Certificat d'inscription</h6>
+                            {% if request.certificat_inscription %}
+                            <a href="{{ url_for('static', filename='uploads/' + request.certificat_inscription) }}" 
+                               target="_blank" class="btn btn-sm btn-primary mt-2">
+                                <i class="fas fa-eye me-1"></i>Voir
+                            </a>
+                            {% else %}
+                            <span class="badge bg-danger">Non fourni</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+    <div class="card">
+        <div class="card-body text-center">
+            <i class="fas fa-id-card fa-3x text-primary mb-3"></i>
+            <h6> CNI</h6>
+            {% if request.copie_cni %}
+            <a href="{{ url_for('static', filename='uploads/' + request.copie_cni) }}" 
+               target="_blank" class="btn btn-sm btn-primary mt-2">
+                <i class="fas fa-eye me-1"></i>Voir
+            </a>
+            {% else %}
+            <span class="badge bg-danger">Non fourni</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-home fa-3x text-primary mb-3"></i>
+                            <h6>Certificat de résidence</h6>
+                            {% if request.certificat_residence %}
+                            <a href="{{ url_for('static', filename='uploads/' + request.certificat_residence) }}" 
+                               target="_blank" class="btn btn-sm btn-primary mt-2">
+                                <i class="fas fa-eye me-1"></i>Voir
+                            </a>
+                            {% else %}
+                            <span class="badge bg-danger">Non fourni</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-pen-fancy fa-3x text-primary mb-3"></i>
+                            <h6>Demande manuscrite</h6>
+                            {% if request.demande_manuscrite %}
+                            <a href="{{ url_for('static', filename='uploads/' + request.demande_manuscrite) }}" 
+                               target="_blank" class="btn btn-sm btn-primary mt-2">
+                                <i class="fas fa-eye me-1"></i>Voir
+                            </a>
+                            {% else %}
+                            <span class="badge bg-danger">Non fourni</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-address-card fa-3x text-primary mb-3"></i>
+                            <h6>Carte membre REED</h6>
+                            {% if request.carte_membre_reed %}
+                            <a href="{{ url_for('static', filename='uploads/' + request.carte_membre_reed) }}" 
+                               target="_blank" class="btn btn-sm btn-primary mt-2">
+                                <i class="fas fa-eye me-1"></i>Voir
+                            </a>
+                            {% else %}
+                            <span class="badge bg-danger">Non fourni</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

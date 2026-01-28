@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Formulaire de Demande - Amicale des Étudiants{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem 0;
+        margin-bottom: 3rem;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-5 fw-bold">Formulaire d'Inscription</h1>
+                <p class="lead">Remplissez ce formulaire pour faire une demande d'adhésion à l'Amicale des Étudiants</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card shadow-lg border-0">
+                <div class="card-body p-5">
+                    <form method="POST" action="{{ url_for('formulaire') }}" enctype="multipart/form-data" id="demandeForm">
+                        <h3 class="mb-4 text-primary">
+                            <i class="fas fa-user-circle me-2"></i> Informations personnelles
+                        </h3>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6 mb-3">
+                                <label for="nom" class="form-label">Nom *</label>
+                                <input type="text" class="form-control" id="nom" name="nom" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="prenom" class="form-label">Prénom *</label>
+                                <input type="text" class="form-control" id="prenom" name="prenom" required>
+                            </div>
+                            <div class="col-12 mb-3">
+                                <label for="adresse" class="form-label">Adresse complète *</label>
+                                <textarea class="form-control" id="adresse" name="adresse" rows="2" required></textarea>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="telephone" class="form-label">Numéro de téléphone *</label>
+                                <input type="tel" class="form-control" id="telephone" name="telephone" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                        </div>
+
+                        <hr class="my-5">
+
+                        <h3 class="mb-4 text-primary">
+                            <i class="fas fa-file-upload me-2"></i> Documents à fournir
+                        </h3>
+                        <p class="text-muted mb-4">Tous les documents doivent être au format PDF, JPG ou PNG (max 16MB)</p>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="certificat_inscription" class="form-label">
+                                        <i class="fas fa-graduation-cap me-2"></i>Certificat d'inscription ou carte étudiante *
+                                    </label>
+                                    <input type="file" class="form-control" id="certificat_inscription" 
+                                           name="certificat_inscription" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Document prouvant votre statut étudiant</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="certificat_residence" class="form-label">
+                                        <i class="fas fa-home me-2"></i>Certificat de résidence *
+                                    </label>
+                                    <input type="file" class="form-control" id="certificat_residence" 
+                                           name="certificat_residence" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Justificatif de domicile</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="demande_manuscrite" class="form-label">
+                                        <i class="fas fa-pen-fancy me-2"></i>Demande manuscrite *
+                                    </label>
+                                    <input type="file" class="form-control" id="demande_manuscrite" 
+                                           name="demande_manuscrite" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Lettre manuscrite de motivation</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="carte_membre_reed" class="form-label">
+                                        <i class="fas fa-address-card me-2"></i>Carte membre REED *
+                                    </label>
+                                    <input type="file" class="form-control" id="carte_membre_reed" 
+                                           name="carte_membre_reed" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Carte de membre REED valide</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="copie_cni" class="form-label">
+                                        <i class="fas fa-id-card me-2"></i>Copie de la CNI *
+                                    </label>
+                                    <input type="file" class="form-control" id="copie_cni" 
+                                           name="copie_cni" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Copie recto-verso de la Carte Nationale d'Identité</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <div class="document-upload">
+                                    <label for="photo_identite" class="form-label">
+                                        <i class="fas fa-camera me-2"></i>Photo d'identité
+                                    </label>
+                                    <input type="file" class="form-control" id="photo_identite" 
+                                           name="photo_identite" accept=".jpg,.jpeg,.png">
+                                    <small class="form-text text-muted">Photo d'identité récente (optionnel)</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info mt-4">
+                            <h5><i class="fas fa-info-circle me-2"></i>Important</h5>
+                            <ul class="mb-0">
+                                <li>Tous les champs marqués d'un * sont obligatoires</li>
+                                <li>Votre demande sera traitée dans les 48 heures</li>
+                                <li>Vous recevrez une notification par email du résultat</li>
+                                <li>Les documents doivent être clairement lisibles</li>
+                                <li>La CNI doit être valide et lisible recto-verso</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-5">
+                            <button type="reset" class="btn btn-outline-secondary me-md-2">
+                                <i class="fas fa-undo me-2"></i>Effacer
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane me-2"></i>Soumettre la demande
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('demandeForm').addEventListener('submit', function(e) {
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    let allFilesValid = true;
+    
+    fileInputs.forEach(input => {
+        if (input.files.length > 0 && input.hasAttribute('required')) {
+            const file = input.files[0];
+            const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+            const maxSize = 16 * 1024 * 1024; // 16MB
+            
+            if (!validTypes.includes(file.type)) {
+                alert(`Le fichier ${input.name} doit être au format PDF, JPG ou PNG`);
+                allFilesValid = false;
+            }
+            
+            if (file.size > maxSize) {
+                alert(`Le fichier ${input.name} est trop volumineux (max 16MB)`);
+                allFilesValid = false;
+            }
+        }
+    });
+    
+    if (!allFilesValid) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}

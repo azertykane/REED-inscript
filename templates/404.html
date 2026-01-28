@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Page non trouvée - Amicale des Étudiants{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <div class="error-container">
+                <h1 class="display-1 text-primary">404</h1>
+                <h2 class="mb-4">Page non trouvée</h2>
+                <p class="lead mb-4">
+                    La page que vous recherchez n'existe pas ou a été déplacée.
+                </p>
+                <div class="mb-4">
+                    <i class="fas fa-exclamation-triangle fa-4x text-warning"></i>
+                </div>
+                <div class="d-flex justify-content-center gap-3">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-home me-2"></i>Retour à l'accueil
+                    </a>
+                    <a href="{{ url_for('formulaire') }}" class="btn btn-outline-primary btn-lg">
+                        <i class="fas fa-file-alt me-2"></i>Formulaire de demande
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .error-container {
+        padding: 3rem;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+</style>
+{% endblock %}
