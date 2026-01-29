@@ -592,7 +592,7 @@ function resetFilters() {
 }
 
 // Update status of a single request
-async function updateStatus(requestId, status, event = null) {
+async function updateStatusDynamic(requestId, status, event = null) {
     if (event) event.stopPropagation();
     
     const notes = prompt('Notes (optionnel):');
@@ -614,75 +614,53 @@ async function updateStatus(requestId, status, event = null) {
         
         const result = await response.json();
         
-        if (response.ok && result.success) {
-            // Mise à jour sans rechargement
+        if (response.ok) {
+            // Mettre à jour l'affichage sans recharger
             const row = document.querySelector(`tr[data-search*="#${requestId}"]`);
             if (row) {
-                // Mettre à jour le badge de statut
-                const statusCell = row.querySelector('td:nth-child(5)');
-                let badgeClass, badgeText, badgeIcon;
+                const statusBadge = row.querySelector('.status-badge');
+                const statusCell = row.dataset.status;
                 
-                switch(status) {
-                    case 'approved':
-                        badgeClass = 'bg-success bg-opacity-10 text-success';
-                        badgeText = 'Approuvé';
-                        badgeIcon = 'fa-check';
-                        break;
-                    case 'rejected':
-                        badgeClass = 'bg-danger bg-opacity-10 text-danger';
-                        badgeText = 'Rejeté';
-                        badgeIcon = 'fa-times';
-                        break;
-                    default:
-                        badgeClass = 'bg-warning bg-opacity-10 text-warning';
-                        badgeText = 'En attente';
-                        badgeIcon = 'fa-clock';
-                }
-                
-                statusCell.innerHTML = `
-                    <span class="status-badge ${badgeClass}">
-                        <i class="fas ${badgeIcon} me-1"></i> ${badgeText}
-                    </span>
-                `;
-                
-                // Mettre à jour l'attribut data-status
+                // Mettre à jour les données
                 row.dataset.status = status;
+                
+                // Mettre à jour le badge
+                statusBadge.innerHTML = `
+                    ${status === 'approved' ? '<i class="fas fa-check me-1"></i> Approuvé' : 
+                      status === 'rejected' ? '<i class="fas fa-times me-1"></i> Rejeté' : 
+                      '<i class="fas fa-clock me-1"></i> En attente'}
+                `;
+                statusBadge.className = `status-badge bg-${status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'warning'} bg-opacity-10 text-${status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'warning'}`;
                 
                 // Mettre à jour les statistiques
                 updateStatsDisplay();
             }
             
-            showSuccess('Statut mis à jour avec succès!');
+            showSuccess(result.message || 'Statut mis à jour!');
         } else {
-            showError(result.error || 'Erreur lors de la mise à jour');
+            showError('Erreur: ' + (result.error || 'Échec de la mise à jour'));
         }
     } catch (error) {
         showError('Erreur: ' + error);
-    } finally {
-        hideLoading();
     }
 }
 
-// Fonction pour mettre à jour l'affichage des statistiques
 function updateStatsDisplay() {
     const rows = document.querySelectorAll('#requestsTable tbody tr');
     let pending = 0, approved = 0, rejected = 0;
     
     rows.forEach(row => {
-        if (row.style.display !== 'none') {
-            switch(row.dataset.status) {
-                case 'pending': pending++; break;
-                case 'approved': approved++; break;
-                case 'rejected': rejected++; break;
-            }
-        }
+        const status = row.dataset.status;
+        if (status === 'pending') pending++;
+        else if (status === 'approved') approved++;
+        else if (status === 'rejected') rejected++;
     });
     
-    // Mettre à jour les compteurs
-    document.querySelectorAll('.stat-card h2')[0].textContent = pending;
-    document.querySelectorAll('.stat-card h2')[1].textContent = approved;
-    document.querySelectorAll('.stat-card h2')[2].textContent = rejected;
-    document.querySelectorAll('.stat-card h2')[3].textContent = rows.length;
+    // Mettre à jour les cartes de stats
+    document.querySelectorAll('.stat-card')[0].querySelector('h2').textContent = pending;
+    document.querySelectorAll('.stat-card')[1].querySelector('h2').textContent = approved;
+    document.querySelectorAll('.stat-card')[2].querySelector('h2').textContent = rejected;
+    document.querySelectorAll('.stat-card')[3].querySelector('h2').textContent = pending + approved + rejected;
 }
 
 // Update status of selected requests
