@@ -15,13 +15,13 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
-    # Mail configuration for Gmail
-    MAIL_SERVER = 'smtp.gmail.com'
+    # Mail configuration for SendGrid
+    MAIL_SERVER = 'smtp.sendgrid.net'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
-    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'rashidtoure730@gmail.com')
-    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'rashidtoure730@gmail.com')
+    MAIL_USERNAME = 'apikey'  # Toujours 'apikey' pour SendGrid
+    MAIL_PASSWORD = os.environ.get('SENDGRID_API_KEY', 'TUKMC7GPEJAPVMD2VMMECH6R')  # Votre clé API SendGrid
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'commissionsociale.reed@gmail.com')
     
     # Admin credentials
     ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')

@@ -9,3 +9,4 @@ WTForms==3.0.1
 Flask-WTF==1.1.1
 Pillow==10.3.0
 gunicorn==21.2.0
+sendgrid==6.11.0

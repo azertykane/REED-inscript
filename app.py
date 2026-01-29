@@ -16,6 +16,9 @@ from config import Config
 from database import db, StudentRequest
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+import sendgrid
+from sendgrid.helpers.mail import Mail as SendGridMail, Email, Content
 import ssl
 
 app = Flask(__name__)
@@ -24,6 +27,9 @@ app.config.from_object(Config)
 # Initialize extensions
 db.init_app(app)
 mail = Mail(app)
+
+# Initialize SendGrid client
+sg_client = sendgrid.SendGridAPIClient(app.config['MAIL_PASSWORD'])
 
 # Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -124,7 +130,7 @@ def formulaire():
     return render_template('form.html')
 
 def send_confirmation_email(to_email, nom, prenom, request_id):
-    """Envoyer un email de confirmation à l'étudiant (version simplifiée)"""
+    """Envoyer un email de confirmation à l'étudiant"""
     subject = "Confirmation de réception de votre demande"
     message = f"""Cher(e) {prenom} {nom},
 
@@ -143,14 +149,14 @@ Amicale des Étudiants
         # Envoyer en arrière-plan
         thread = threading.Thread(
             target=send_email_async,
-            args=(app.app_context(), to_email, subject, message)
+            args=(to_email, subject, message)
         )
+        thread.daemon = True
         thread.start()
         print(f"Email de confirmation programmé pour {to_email}")
         
     except Exception as email_error:
         print(f"Erreur d'envoi d'email: {email_error}")
-        # Ne pas bloquer l'utilisateur si l'email échoue
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -235,32 +241,38 @@ def update_status(request_id):
         return jsonify({'error': str(e)}), 500
 
 
-def send_email_async(app_context, to_email, subject, body):
+# Fonction pour envoyer des emails avec SendGrid
+def send_email_sendgrid(to_email, subject, body, from_email=None):
+    """Envoyer un email via SendGrid API"""
+    try:
+        if from_email is None:
+            from_email = app.config['MAIL_DEFAULT_SENDER']
+        
+        # Créer le message SendGrid
+        message = SendGridMail(
+            from_email=Email(from_email),
+            to_emails=Email(to_email),
+            subject=subject,
+            plain_text_content=Content("text/plain", body)
+        )
+        
+        # Envoyer l'email
+        response = sg_client.send(message)
+        
+        print(f"Email envoyé à {to_email} - Status: {response.status_code}")
+        return True
+        
+    except Exception as e:
+        print(f"Erreur d'envoi d'email à {to_email}: {str(e)}")
+        return False
+
+# Fonction pour envoyer des emails en arrière-plan
+def send_email_async(to_email, subject, body):
     """Envoyer un email en arrière-plan"""
-    with app_context:
-        try:
-            # Configuration SMTP pour Gmail
-            context = ssl.create_default_context()
-            
-            # Créer le message
-            msg = MIMEMultipart()
-            msg['From'] = app.config['MAIL_DEFAULT_SENDER']
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            
-            # Ajouter le corps du message
-            msg.attach(MIMEText(body, 'plain'))
-            
-            # Envoyer l'email
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
-                server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
-                server.send_message(msg)
-            
-            print(f"Email envoyé à {to_email}")
-            
-        except Exception as e:
-            print(f"Erreur d'envoi d'email à {to_email}: {str(e)}")
-            # Log l'erreur mais ne pas bloquer l'utilisateur
+    try:
+        send_email_sendgrid(to_email, subject, body)
+    except Exception as e:
+        print(f"Erreur dans send_email_async: {str(e)}")
 
 @app.route('/admin/send_email', methods=['POST'])
 def send_email():
@@ -315,15 +327,13 @@ def send_email():
         if not valid_emails:
             return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
         
+        # Limiter à 20 emails pour éviter les limites
+        valid_emails = valid_emails[:20]
+        
         # Envoyer les emails en arrière-plan
         sent_count = 0
-        failed_emails = []
         
-        # Créer un thread pour chaque email (limité à 10 pour éviter le spam)
-        threads = []
-        max_threads = min(len(valid_emails), 10)  # Limiter à 10 threads max
-        
-        for i, email in enumerate(valid_emails[:50]):  # Limiter à 50 emails max
+        for email in valid_emails:
             try:
                 # Personnaliser le message
                 personalized_message = message
@@ -336,38 +346,35 @@ def send_email():
                         if student.date_submitted:
                             personalized_message = personalized_message.replace('{date}', student.date_submitted.strftime('%d/%m/%Y'))
                 
-                # Créer un thread pour envoyer l'email
+                # Envoyer en arrière-plan
                 thread = threading.Thread(
                     target=send_email_async,
-                    args=(app.app_context(), email, subject, personalized_message)
+                    args=(email, subject, personalized_message)
                 )
-                threads.append(thread)
+                thread.daemon = True  # Thread démon pour ne pas bloquer l'arrêt
                 thread.start()
                 sent_count += 1
                 
-                # Pause pour éviter les limites de Gmail
-                if i % 5 == 0 and i > 0:
-                    time.sleep(1)
+                # Petite pause pour éviter le rate limiting
+                time.sleep(0.5)
                     
             except Exception as e:
-                failed_emails.append({'email': email, 'error': str(e)})
+                print(f"Erreur pour {email}: {str(e)}")
         
-        # Attendre que tous les threads se terminent (avec timeout)
-        for thread in threads:
-            thread.join(timeout=30)  # Timeout de 30 secondes
-        
-        # Préparer la réponse IMMÉDIATE (ne pas attendre tous les emails)
+        # Préparer la réponse IMMÉDIATE
         response_data = {
             'success': True, 
             'message': f'Envoi d\'emails lancé en arrière-plan. {sent_count} email(s) seront envoyés.',
             'sent_count': sent_count,
-            'total_count': len(valid_emails[:50])  # Limité à 50
+            'total_count': len(valid_emails)
         }
         
         return jsonify(response_data)
     
     except Exception as e:
+        print(f"Erreur générale: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 def send_status_email(student, status, notes):
     """Envoyer un email à l'étudiant concernant le statut de sa demande"""
@@ -415,40 +422,69 @@ Amicale des Étudiants
         # Envoyer en arrière-plan
         thread = threading.Thread(
             target=send_email_async,
-            args=(app.app_context(), student.email, subject, message)
+            args=(student.email, subject, message)
         )
+        thread.daemon = True
         thread.start()
         print(f"Email de statut programmé pour {student.email}")
     except Exception as e:
         print(f"Erreur d'envoi d'email de statut: {e}")
 
-@app.route('/admin/test_email', methods=['GET', 'POST'])
-def test_email():
+@app.route('/test-sendgrid')
+def test_sendgrid():
+    """Route pour tester SendGrid"""
+    try:
+        # Tester l'envoi à votre propre email
+        test_email = "commissionsociale.reed@gmail.com"  # Remplacez par votre email
+        subject = "Test SendGrid depuis Render"
+        message = "Ceci est un test d'envoi d'email depuis votre application sur Render."
+        
+        success = send_email_sendgrid(test_email, subject, message)
+        
+        if success:
+            return f"Email de test envoyé à {test_email}"
+        else:
+            return "Échec de l'envoi de l'email de test"
+    
+    except Exception as e:
+        return f"Erreur: {str(e)}"
+
+@app.route('/admin/test-email')
+def admin_test_email():
+    """Page admin pour tester les emails"""
     if not session.get('admin_logged_in'):
         return redirect(url_for('admin_login'))
     
-    if request.method == 'POST':
-        email = request.form.get('email')
-        if email:
-            try:
-                # Tester l'envoi d'email
-                subject = "Test d'email - Amicale des Étudiants"
-                message = "Ceci est un email de test pour vérifier la configuration."
-                
-                send_email_async(app.app_context(), email, subject, message)
-                
-                flash(f'Email de test envoyé à {email}', 'success')
-            except Exception as e:
-                flash(f'Erreur: {str(e)}', 'error')
-        
-        return redirect(url_for('admin_dashboard'))
-    
     return '''
-    <form method="POST">
-        <input type="email" name="email" placeholder="Email de test" required>
-        <button type="submit">Tester l'email</button>
+    <h2>Tester l'envoi d'emails</h2>
+    <form method="POST" action="/admin/send-test-email">
+        <div>
+            <label>Email de test:</label>
+            <input type="email" name="email" value="commissionsociale.reed@gmail.com" required>
+        </div>
+        <button type="submit">Envoyer un test</button>
     </form>
     '''
+
+@app.route('/admin/send-test-email', methods=['POST'])
+def send_test_email():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    
+    email = request.form.get('email')
+    if email:
+        success = send_email_sendgrid(
+            email, 
+            "Test d'email - Amicale des Étudiants", 
+            "Ceci est un email de test depuis votre application sur Render."
+        )
+        
+        if success:
+            flash(f'Email de test envoyé à {email}', 'success')
+        else:
+            flash(f'Échec de l\'envoi à {email}', 'error')
+    
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/download_report')
 def download_report():
@@ -627,7 +663,7 @@ if __name__ == '__main__':
         print("URL: http://127.0.0.1:5000")
         print("Login admin: http://127.0.0.1:5000/admin/login")
         print("Identifiants: admin / admin123")
-        print("Email configuré: rashidtoure730@gmail.com")
+        print("Email configuré: commissionsociale.reed@gmail.com")
         print("="*60 + "\n")
     
     app.run(debug=True, port=5000)

@@ -8,7 +8,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: MAIL_USERNAME
-        value: rashidtoure730@gmail.com
+        value: commissionsociale.reed@gmail.com
       - key: MAIL_PASSWORD
         sync: false
       - key: ADMIN_USERNAME
