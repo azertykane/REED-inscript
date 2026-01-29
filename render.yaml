@@ -1,15 +1,10 @@
 services:
   - type: web
     name: student-amicale-app
-    env: python
-    region: frankfurt  # Ou une autre région proche
-    buildCommand: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.12
       - key: SECRET_KEY
         generateValue: true
       - key: MAIL_USERNAME
@@ -22,5 +17,5 @@ services:
         generateValue: true
     disk:
       name: uploads
-      mountPath: /opt/render/project/src/static/uploads
+      mountPath: /app/static/uploads
       sizeGB: 1
