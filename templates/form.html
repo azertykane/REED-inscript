@@ -146,6 +146,9 @@
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-5">
+                             <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                role="progressbar" style="width: 0%"></div>
+                                <p id="progress-text" class="text-center">Traitement en cours...</p>
                             <button type="reset" class="btn btn-outline-secondary me-md-2">
                                 <i class="fas fa-undo me-2"></i>Effacer
                             </button>
@@ -163,7 +166,24 @@
 
 {% block extra_js %}
 <script>
+
 document.getElementById('demandeForm').addEventListener('submit', function(e) {
+    // Montrer la progression
+    document.getElementById('progress-container').style.display = 'block';
+    document.getElementById('submit-btn').disabled = true;
+    
+    // Mettre à jour la barre de progression
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += 10;
+        if (progress <= 90) {
+            document.getElementById('progress-bar').style.width = progress + '%';
+        }
+    }, 500);
+    
+    // Stocker l'intervalle pour le nettoyer
+    this.dataset.progressInterval = interval;
+
     const fileInputs = document.querySelectorAll('input[type="file"]');
     let allFilesValid = true;
     

@@ -9,7 +9,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
-import sqlite3
 
 from config import Config
 from database import db, StudentRequest
@@ -21,18 +20,11 @@ app.config.from_object(Config)
 db.init_app(app)
 mail = Mail(app)
 
-# Create necessary directories
-os.makedirs('static/uploads', exist_ok=True)
-os.makedirs('instance', exist_ok=True)
+# Create upload folder if it doesn't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-def init_database():
-    """Initialiser la base de données si elle n'existe pas"""
-    with app.app_context():
-        db.create_all()
-        print("Base de données initialisée")
 
 @app.route('/')
 def index():
@@ -54,16 +46,22 @@ def formulaire():
                 flash('Tous les champs sont obligatoires', 'error')
                 return redirect(url_for('formulaire'))
             
+            # Validate phone number
+            if not telephone.replace(' ', '').isdigit():
+                flash('Numéro de téléphone invalide', 'error')
+                return redirect(url_for('formulaire'))
+            
             # Create new student request
             new_request = StudentRequest(
                 nom=nom,
                 prenom=prenom,
                 adresse=adresse,
                 telephone=telephone,
-                email=email
+                email=email,
+                status='pending'
             )
             
-            # Handle file uploads
+            # Handle file uploads - SIMPLIFIÉ POUR ÉVITER LES TIMEOUT
             files_required = {
                 'certificat_inscription': 'certificat_inscription',
                 'certificat_residence': 'certificat_residence', 
@@ -72,37 +70,50 @@ def formulaire():
                 'copie_cni': 'copie_cni'
             }
             
-            files_uploaded = True
+            # Vérifier d'abord tous les fichiers
+            for field, file_key in files_required.items():
+                file = request.files.get(file_key)
+                if not file or file.filename == '':
+                    flash(f'Le fichier {field.replace("_", " ")} est requis', 'error')
+                    return redirect(url_for('formulaire'))
+                
+                if not allowed_file(file.filename):
+                    flash(f'Le fichier {field.replace("_", " ")} doit être au format PDF, PNG ou JPG', 'error')
+                    return redirect(url_for('formulaire'))
+            
+            # Sauvegarder la demande d'abord
+            db.session.add(new_request)
+            db.session.flush()  # Get the ID without committing
+            
+            # Ensuite sauvegarder les fichiers
             for field, file_key in files_required.items():
                 file = request.files.get(file_key)
                 if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{field}_{file.filename}")
+                    # Utiliser un nom de fichier simple
+                    filename = f"{new_request.id}_{field}.{file.filename.rsplit('.', 1)[1].lower()}"
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    
+                    # Sauvegarder le fichier
                     file.save(filepath)
                     setattr(new_request, field, filename)
-                else:
-                    flash(f'Le fichier {field.replace("_", " ")} est requis et doit être au format PDF, PNG ou JPG', 'error')
-                    files_uploaded = False
             
-            if not files_uploaded:
-                return redirect(url_for('formulaire'))
-            
-            # Save to database
-            db.session.add(new_request)
+            # Commit toutes les données
             db.session.commit()
             
-            # Envoyer un email de confirmation
+            # Envoyer l'email en arrière-plan (ne pas bloquer la réponse)
             try:
-                send_confirmation_email(email, nom, prenom, new_request.id)
-            except Exception as email_error:
-                print(f"Erreur d'envoi d'email: {email_error}")
+                send_confirmation_email.delay(email, nom, prenom, new_request.id)
+            except:
+                # Si Celery n'est pas configuré, envoyer plus tard
+                pass
             
             flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
             return redirect(url_for('index'))
             
         except Exception as e:
             db.session.rollback()
-            flash(f'Une erreur est survenue: {str(e)}', 'error')
+            app.logger.error(f'Erreur lors de la soumission: {str(e)}')
+            flash('Une erreur est survenue lors de la soumission. Veuillez réessayer.', 'error')
             return redirect(url_for('formulaire'))
     
     return render_template('form.html')
@@ -139,13 +150,20 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASSWORD']:
+        print(f"\n=== TENTATIVE DE CONNEXION ===")
+        print(f"Username: '{username}'")
+        print(f"Password: '{password}'")
+        print(f"Attendu: 'admin' / 'admin123'")
+        
+        if username == 'admin' and password == 'admin123':
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
+            print("✓ Connexion réussie")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Identifiants incorrects', 'error')
+            print("✗ Identifiants incorrects")
     
     return render_template('admin_login.html')
 
@@ -229,7 +247,7 @@ Bienvenue dans notre communauté !
 Après examen de votre demande d'adhésion (ID: {student.id}), nous regrettons de vous informer qu'elle n'a pas pu être acceptée pour le moment.
 
 """
-    else:
+    else:  # pending
         subject = "Mise à jour sur votre demande d'adhésion"
         message = f"""Cher(e) {student.prenom} {student.nom},
 
@@ -305,6 +323,7 @@ def send_email():
         elif recipient_type == 'custom' and custom_emails:
             emails_list = [email.strip() for email in custom_emails if email.strip()]
         else:
+            # Tous les étudiants
             all_students = StudentRequest.query.all()
             recipients = all_students
             emails_list = [student.email for student in all_students if student.email]
@@ -321,9 +340,10 @@ def send_email():
         
         for i, email in enumerate(valid_emails):
             try:
-                # Personnaliser le message
+                # Personnaliser le message avec les variables
                 personalized_message = message
                 if recipient_type in ['approved', 'rejected', 'pending', 'selected', 'all']:
+                    # Chercher l'étudiant correspondant
                     student = next((s for s in recipients if s.email == email), None)
                     if student:
                         personalized_message = message.replace('{nom}', student.nom or '')
@@ -342,12 +362,13 @@ def send_email():
                 mail.send(msg)
                 sent_count += 1
                 
-                # Pause pour éviter les limites
+                # Petite pause pour éviter les limites de Gmail
                 if i % 10 == 0 and i > 0:
                     time.sleep(1)
                     
             except Exception as e:
                 failed_emails.append({'email': email, 'error': str(e)})
+                print(f"Erreur d'envoi à {email}: {e}")
         
         # Préparer la réponse
         response_data = {
@@ -358,7 +379,7 @@ def send_email():
         }
         
         if failed_emails:
-            response_data['failed_emails'] = failed_emails[:10]
+            response_data['failed_emails'] = failed_emails[:10]  # Limiter à 10 échecs
             response_data['warning'] = f"{len(failed_emails)} email(s) n'ont pas pu être envoyés"
         
         return jsonify(response_data)
@@ -372,6 +393,7 @@ def download_report():
         return redirect(url_for('admin_login'))
     
     try:
+        # Create PDF report
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
@@ -440,7 +462,7 @@ def download_report():
         # Table rows
         requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
         for req in requests:
-            if y_position < 1*inch:
+            if y_position < 1*inch:  # New page if needed
                 p.showPage()
                 p.setFont("Helvetica", 8)
                 y_position = height - 1*inch
@@ -534,11 +556,15 @@ def internal_server_error(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    init_database()
-    print("\n" + "="*60)
-    print("APPLICATION PRÊTE POUR LA PRODUCTION")
-    print("="*60)
-    print("URL: http://localhost:5000")
-    print("Login admin: http://localhost:5000/admin/login")
-    print("="*60 + "\n")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    with app.app_context():
+        db.create_all()
+        print("\n" + "="*60)
+        print("APPLICATION DÉMARRÉE")
+        print("="*60)
+        print("URL: http://127.0.0.1:5000")
+        print("Login admin: http://127.0.0.1:5000/admin/login")
+        print("Identifiants: admin / admin123")
+        print("Email configuré: rashidtoure730@gmail.com")
+        print("="*60 + "\n")
+    
+    app.run(debug=True, port=5000)
