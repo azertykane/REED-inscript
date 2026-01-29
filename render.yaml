@@ -2,17 +2,24 @@ services:
   - type: web
     name: student-amicale-app
     env: python
-    buildCommand: pip install -r requirements.txt
+    region: frankfurt  # Ou une autre région proche
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.8
+        value: 3.10.12
       - key: SECRET_KEY
         generateValue: true
       - key: MAIL_USERNAME
         value: commissionsociale.reed@gmail.com
       - key: MAIL_PASSWORD
-        sync: false  # Vous devrez l'ajouter manuellement dans le dashboard
+        sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
     disk:
       name: uploads
       mountPath: /opt/render/project/src/static/uploads
