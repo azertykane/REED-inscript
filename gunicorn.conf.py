@@ -5,8 +5,8 @@ import multiprocessing
 workers = 2
 worker_class = 'sync'
 
-# Timeout augmenté
-timeout = 120  # 2 minutes au lieu de 30 secondes par défaut
+# Timeout augmenté pour les uploads
+timeout = 180
 keepalive = 5
 
 # Logging
@@ -14,5 +14,9 @@ accesslog = '-'
 errorlog = '-'
 loglevel = 'info'
 
-# Worker temp directory (pour éviter les problèmes de droits)
+# Worker temp directory
 worker_tmp_dir = '/dev/shm'
+
+# Max requests pour éviter les fuites mémoire
+max_requests = 1000
+max_requests_jitter = 50

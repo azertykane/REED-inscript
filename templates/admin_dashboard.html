@@ -612,15 +612,77 @@ async function updateStatus(requestId, status, event = null) {
             })
         });
         
-        if (response.ok) {
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            // Mise à jour sans rechargement
+            const row = document.querySelector(`tr[data-search*="#${requestId}"]`);
+            if (row) {
+                // Mettre à jour le badge de statut
+                const statusCell = row.querySelector('td:nth-child(5)');
+                let badgeClass, badgeText, badgeIcon;
+                
+                switch(status) {
+                    case 'approved':
+                        badgeClass = 'bg-success bg-opacity-10 text-success';
+                        badgeText = 'Approuvé';
+                        badgeIcon = 'fa-check';
+                        break;
+                    case 'rejected':
+                        badgeClass = 'bg-danger bg-opacity-10 text-danger';
+                        badgeText = 'Rejeté';
+                        badgeIcon = 'fa-times';
+                        break;
+                    default:
+                        badgeClass = 'bg-warning bg-opacity-10 text-warning';
+                        badgeText = 'En attente';
+                        badgeIcon = 'fa-clock';
+                }
+                
+                statusCell.innerHTML = `
+                    <span class="status-badge ${badgeClass}">
+                        <i class="fas ${badgeIcon} me-1"></i> ${badgeText}
+                    </span>
+                `;
+                
+                // Mettre à jour l'attribut data-status
+                row.dataset.status = status;
+                
+                // Mettre à jour les statistiques
+                updateStatsDisplay();
+            }
+            
             showSuccess('Statut mis à jour avec succès!');
-            setTimeout(() => location.reload(), 1000);
         } else {
-            showError('Erreur lors de la mise à jour');
+            showError(result.error || 'Erreur lors de la mise à jour');
         }
     } catch (error) {
         showError('Erreur: ' + error);
+    } finally {
+        hideLoading();
     }
+}
+
+// Fonction pour mettre à jour l'affichage des statistiques
+function updateStatsDisplay() {
+    const rows = document.querySelectorAll('#requestsTable tbody tr');
+    let pending = 0, approved = 0, rejected = 0;
+    
+    rows.forEach(row => {
+        if (row.style.display !== 'none') {
+            switch(row.dataset.status) {
+                case 'pending': pending++; break;
+                case 'approved': approved++; break;
+                case 'rejected': rejected++; break;
+            }
+        }
+    });
+    
+    // Mettre à jour les compteurs
+    document.querySelectorAll('.stat-card h2')[0].textContent = pending;
+    document.querySelectorAll('.stat-card h2')[1].textContent = approved;
+    document.querySelectorAll('.stat-card h2')[2].textContent = rejected;
+    document.querySelectorAll('.stat-card h2')[3].textContent = rows.length;
 }
 
 // Update status of selected requests
