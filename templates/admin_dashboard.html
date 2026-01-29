@@ -592,7 +592,7 @@ function resetFilters() {
 }
 
 // Update status of a single request
-async function updateStatusDynamic(requestId, status, event = null) {
+async function updateStatus(requestId, status, event = null) {
     if (event) event.stopPropagation();
     
     const notes = prompt('Notes (optionnel):');
@@ -612,55 +612,15 @@ async function updateStatusDynamic(requestId, status, event = null) {
             })
         });
         
-        const result = await response.json();
-        
         if (response.ok) {
-            // Mettre à jour l'affichage sans recharger
-            const row = document.querySelector(`tr[data-search*="#${requestId}"]`);
-            if (row) {
-                const statusBadge = row.querySelector('.status-badge');
-                const statusCell = row.dataset.status;
-                
-                // Mettre à jour les données
-                row.dataset.status = status;
-                
-                // Mettre à jour le badge
-                statusBadge.innerHTML = `
-                    ${status === 'approved' ? '<i class="fas fa-check me-1"></i> Approuvé' : 
-                      status === 'rejected' ? '<i class="fas fa-times me-1"></i> Rejeté' : 
-                      '<i class="fas fa-clock me-1"></i> En attente'}
-                `;
-                statusBadge.className = `status-badge bg-${status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'warning'} bg-opacity-10 text-${status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : 'warning'}`;
-                
-                // Mettre à jour les statistiques
-                updateStatsDisplay();
-            }
-            
-            showSuccess(result.message || 'Statut mis à jour!');
+            showSuccess('Statut mis à jour avec succès!');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            showError('Erreur: ' + (result.error || 'Échec de la mise à jour'));
+            showError('Erreur lors de la mise à jour');
         }
     } catch (error) {
         showError('Erreur: ' + error);
     }
-}
-
-function updateStatsDisplay() {
-    const rows = document.querySelectorAll('#requestsTable tbody tr');
-    let pending = 0, approved = 0, rejected = 0;
-    
-    rows.forEach(row => {
-        const status = row.dataset.status;
-        if (status === 'pending') pending++;
-        else if (status === 'approved') approved++;
-        else if (status === 'rejected') rejected++;
-    });
-    
-    // Mettre à jour les cartes de stats
-    document.querySelectorAll('.stat-card')[0].querySelector('h2').textContent = pending;
-    document.querySelectorAll('.stat-card')[1].querySelector('h2').textContent = approved;
-    document.querySelectorAll('.stat-card')[2].querySelector('h2').textContent = rejected;
-    document.querySelectorAll('.stat-card')[3].querySelector('h2').textContent = pending + approved + rejected;
 }
 
 // Update status of selected requests

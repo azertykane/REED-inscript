@@ -1,9 +1,9 @@
 services:
   - type: web
     name: student-amicale-app
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --timeout 120 --workers 2 app:app
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -15,7 +15,13 @@ services:
         value: admin
       - key: ADMIN_PASSWORD
         generateValue: true
+      # Utiliser le port fourni par Render
+      - key: PORT
+        value: 10000
+      # Configuration pour Render
+      - key: RENDER
+        value: true
     disk:
       name: uploads
-      mountPath: /app/static/uploads
+      mountPath: ./static/uploads
       sizeGB: 1

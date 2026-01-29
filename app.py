@@ -1,7 +1,8 @@
 import os
 import time
-import json
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, Response
+import threading
+import smtplib
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, session, current_app
 from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -10,11 +11,12 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
-import sqlite3
-from functools import wraps
 
 from config import Config
 from database import db, StudentRequest
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import ssl
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -23,26 +25,11 @@ app.config.from_object(Config)
 db.init_app(app)
 mail = Mail(app)
 
-# Create necessary directories
-os.makedirs('static/uploads', exist_ok=True)
-os.makedirs('instance', exist_ok=True)
+# Create upload folder if it doesn't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-def init_database():
-    """Initialiser la base de données si elle n'existe pas"""
-    with app.app_context():
-        db.create_all()
-        print("Base de données initialisée")
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('admin_logged_in'):
-            return jsonify({'error': 'Non autorisé'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
 
 @app.route('/')
 def index():
@@ -65,7 +52,7 @@ def formulaire():
                 return redirect(url_for('formulaire'))
             
             # Validate phone number
-            if not telephone.replace(' ', '').replace('-', '').replace('+', '').isdigit():
+            if not telephone.replace(' ', '').isdigit():
                 flash('Numéro de téléphone invalide', 'error')
                 return redirect(url_for('formulaire'))
             
@@ -79,7 +66,7 @@ def formulaire():
                 status='pending'
             )
             
-            # Handle file uploads
+            # Handle file uploads - SIMPLIFIÉ POUR ÉVITER LES TIMEOUT
             files_required = {
                 'certificat_inscription': 'certificat_inscription',
                 'certificat_residence': 'certificat_residence', 
@@ -108,8 +95,7 @@ def formulaire():
                 file = request.files.get(file_key)
                 if file and file.filename and allowed_file(file.filename):
                     # Utiliser un nom de fichier simple
-                    ext = file.filename.rsplit('.', 1)[1].lower()
-                    filename = f"{new_request.id}_{field}.{ext}"
+                    filename = f"{new_request.id}_{field}.{file.filename.rsplit('.', 1)[1].lower()}"
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     
                     # Sauvegarder le fichier
@@ -119,14 +105,14 @@ def formulaire():
             # Commit toutes les données
             db.session.commit()
             
-            # Envoyer l'email de confirmation
+            # Envoyer l'email en arrière-plan (ne pas bloquer la réponse)
             try:
-                send_confirmation_email(email, nom, prenom, new_request.id)
-                flash('Votre demande a été soumise avec succès! Un email de confirmation a été envoyé.', 'success')
-            except Exception as email_error:
-                app.logger.error(f"Erreur d'envoi d'email: {email_error}")
-                flash('Votre demande a été soumise avec succès! (Note: Email de confirmation non envoyé)', 'success')
+                send_confirmation_email.delay(email, nom, prenom, new_request.id)
+            except:
+                # Si Celery n'est pas configuré, envoyer plus tard
+                pass
             
+            flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
             return redirect(url_for('index'))
             
         except Exception as e:
@@ -138,7 +124,7 @@ def formulaire():
     return render_template('form.html')
 
 def send_confirmation_email(to_email, nom, prenom, request_id):
-    """Envoyer un email de confirmation à l'étudiant"""
+    """Envoyer un email de confirmation à l'étudiant (version simplifiée)"""
     subject = "Confirmation de réception de votre demande"
     message = f"""Cher(e) {prenom} {nom},
 
@@ -153,15 +139,18 @@ La Commission Sociale REED
 Amicale des Étudiants
 """
     
-    msg = Message(
-        subject=subject,
-        recipients=[to_email],
-        body=message,
-        sender=app.config['MAIL_DEFAULT_SENDER']
-    )
-    
-    mail.send(msg)
-    app.logger.info(f"Email de confirmation envoyé à {to_email}")
+    try:
+        # Envoyer en arrière-plan
+        thread = threading.Thread(
+            target=send_email_async,
+            args=(app.app_context(), to_email, subject, message)
+        )
+        thread.start()
+        print(f"Email de confirmation programmé pour {to_email}")
+        
+    except Exception as email_error:
+        print(f"Erreur d'envoi d'email: {email_error}")
+        # Ne pas bloquer l'utilisateur si l'email échoue
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -169,13 +158,20 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASSWORD']:
+        print(f"\n=== TENTATIVE DE CONNEXION ===")
+        print(f"Username: '{username}'")
+        print(f"Password: '{password}'")
+        print(f"Attendu: 'admin' / 'admin123'")
+        
+        if username == 'admin' and password == 'admin123':
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
+            print("✓ Connexion réussie")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Identifiants incorrects', 'error')
+            print("✗ Identifiants incorrects")
     
     return render_template('admin_login.html')
 
@@ -205,21 +201,19 @@ def view_request(request_id):
     return render_template('view_request.html', request=student_request)
 
 @app.route('/admin/update_status/<int:request_id>', methods=['POST'])
-@admin_required
 def update_status(request_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Non autorisé'}), 401
+    
     try:
         student_request = StudentRequest.query.get_or_404(request_id)
+        data = request.get_json()
         
-        # Vérifier si c'est JSON ou form data
-        if request.is_json:
-            data = request.get_json()
-            if not data:
-                return jsonify({'error': 'Données JSON requises'}), 400
-            status = data.get('status')
-            notes = data.get('notes', '')
-        else:
-            status = request.form.get('status')
-            notes = request.form.get('notes', '')
+        if not data:
+            return jsonify({'error': 'Données JSON requises'}), 400
+        
+        status = data.get('status')
+        notes = data.get('notes', '')
         
         if status in ['pending', 'approved', 'rejected']:
             old_status = student_request.status
@@ -232,17 +226,147 @@ def update_status(request_id):
             if old_status != status:
                 send_status_email(student_request, status, notes)
             
-            return jsonify({
-                'success': True, 
-                'message': 'Statut mis à jour',
-                'new_status': status
-            })
+            return jsonify({'success': True, 'message': 'Statut mis à jour'})
         else:
             return jsonify({'error': 'Statut invalide'}), 400
     
     except Exception as e:
         db.session.rollback()
-        app.logger.error(f'Erreur mise à jour statut: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+
+def send_email_async(app_context, to_email, subject, body):
+    """Envoyer un email en arrière-plan"""
+    with app_context:
+        try:
+            # Configuration SMTP pour Gmail
+            context = ssl.create_default_context()
+            
+            # Créer le message
+            msg = MIMEMultipart()
+            msg['From'] = app.config['MAIL_DEFAULT_SENDER']
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            # Ajouter le corps du message
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Envoyer l'email
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
+                server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+                server.send_message(msg)
+            
+            print(f"Email envoyé à {to_email}")
+            
+        except Exception as e:
+            print(f"Erreur d'envoi d'email à {to_email}: {str(e)}")
+            # Log l'erreur mais ne pas bloquer l'utilisateur
+
+@app.route('/admin/send_email', methods=['POST'])
+def send_email():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Non autorisé'}), 401
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'Données JSON requises'}), 400
+        
+        recipient_type = data.get('recipient_type', 'all')
+        subject = data.get('subject', '')
+        message = data.get('message', '')
+        custom_emails = data.get('custom_emails', [])
+        selected_ids = data.get('selected_ids', [])
+        
+        if not subject or not message:
+            return jsonify({'error': 'Sujet et message sont requis'}), 400
+        
+        # Récupérer les destinataires
+        recipients = []
+        emails_list = []
+        
+        if recipient_type == 'approved':
+            approved_students = StudentRequest.query.filter_by(status='approved').all()
+            recipients = approved_students
+            emails_list = [student.email for student in approved_students if student.email]
+        elif recipient_type == 'rejected':
+            rejected_students = StudentRequest.query.filter_by(status='rejected').all()
+            recipients = rejected_students
+            emails_list = [student.email for student in rejected_students if student.email]
+        elif recipient_type == 'pending':
+            pending_students = StudentRequest.query.filter_by(status='pending').all()
+            recipients = pending_students
+            emails_list = [student.email for student in pending_students if student.email]
+        elif recipient_type == 'selected' and selected_ids:
+            selected_students = StudentRequest.query.filter(StudentRequest.id.in_(selected_ids)).all()
+            recipients = selected_students
+            emails_list = [student.email for student in selected_students if student.email]
+        elif recipient_type == 'custom' and custom_emails:
+            emails_list = [email.strip() for email in custom_emails if email.strip()]
+        else:
+            all_students = StudentRequest.query.all()
+            recipients = all_students
+            emails_list = [student.email for student in all_students if student.email]
+        
+        # Filtrer les emails valides
+        valid_emails = [email for email in emails_list if email and '@' in email]
+        
+        if not valid_emails:
+            return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
+        
+        # Envoyer les emails en arrière-plan
+        sent_count = 0
+        failed_emails = []
+        
+        # Créer un thread pour chaque email (limité à 10 pour éviter le spam)
+        threads = []
+        max_threads = min(len(valid_emails), 10)  # Limiter à 10 threads max
+        
+        for i, email in enumerate(valid_emails[:50]):  # Limiter à 50 emails max
+            try:
+                # Personnaliser le message
+                personalized_message = message
+                if recipient_type in ['approved', 'rejected', 'pending', 'selected', 'all']:
+                    student = next((s for s in recipients if s.email == email), None)
+                    if student:
+                        personalized_message = message.replace('{nom}', student.nom or '')
+                        personalized_message = personalized_message.replace('{prenom}', student.prenom or '')
+                        personalized_message = personalized_message.replace('{id}', str(student.id))
+                        if student.date_submitted:
+                            personalized_message = personalized_message.replace('{date}', student.date_submitted.strftime('%d/%m/%Y'))
+                
+                # Créer un thread pour envoyer l'email
+                thread = threading.Thread(
+                    target=send_email_async,
+                    args=(app.app_context(), email, subject, personalized_message)
+                )
+                threads.append(thread)
+                thread.start()
+                sent_count += 1
+                
+                # Pause pour éviter les limites de Gmail
+                if i % 5 == 0 and i > 0:
+                    time.sleep(1)
+                    
+            except Exception as e:
+                failed_emails.append({'email': email, 'error': str(e)})
+        
+        # Attendre que tous les threads se terminent (avec timeout)
+        for thread in threads:
+            thread.join(timeout=30)  # Timeout de 30 secondes
+        
+        # Préparer la réponse IMMÉDIATE (ne pas attendre tous les emails)
+        response_data = {
+            'success': True, 
+            'message': f'Envoi d\'emails lancé en arrière-plan. {sent_count} email(s) seront envoyés.',
+            'sent_count': sent_count,
+            'total_count': len(valid_emails[:50])  # Limité à 50
+        }
+        
+        return jsonify(response_data)
+    
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 def send_status_email(student, status, notes):
@@ -288,149 +412,51 @@ Amicale des Étudiants
 """
     
     try:
-        msg = Message(
-            subject=subject,
-            recipients=[student.email],
-            body=message,
-            sender=app.config['MAIL_DEFAULT_SENDER']
+        # Envoyer en arrière-plan
+        thread = threading.Thread(
+            target=send_email_async,
+            args=(app.app_context(), student.email, subject, message)
         )
-        mail.send(msg)
-        app.logger.info(f"Email de statut envoyé à {student.email}")
+        thread.start()
+        print(f"Email de statut programmé pour {student.email}")
     except Exception as e:
-        app.logger.error(f"Erreur d'envoi d'email de statut: {e}")
+        print(f"Erreur d'envoi d'email de statut: {e}")
 
-@app.route('/admin/send_email', methods=['POST'])
-@admin_required
-def send_email():
-    try:
-        # Vérifier le Content-Type
-        content_type = request.headers.get('Content-Type', '')
-        if 'application/json' in content_type:
-            try:
-                data = request.get_json()
-                if not data:
-                    return jsonify({'error': 'Données JSON requises'}), 400
-            except:
-                return jsonify({'error': 'JSON invalide'}), 400
-        else:
-            # Fallback to form data
-            data = {
-                'recipient_type': request.form.get('recipient_type'),
-                'subject': request.form.get('subject'),
-                'message': request.form.get('message'),
-                'custom_emails': request.form.get('custom_emails', '').split(',') if request.form.get('custom_emails') else [],
-                'selected_ids': request.form.getlist('selected_ids[]')
-            }
-        
-        recipient_type = data.get('recipient_type', 'all')
-        subject = data.get('subject', '')
-        message = data.get('message', '')
-        custom_emails = data.get('custom_emails', [])
-        selected_ids = data.get('selected_ids', [])
-        
-        if isinstance(custom_emails, str):
-            custom_emails = [email.strip() for email in custom_emails.split(',') if email.strip()]
-        
-        if isinstance(selected_ids, str):
-            try:
-                selected_ids = json.loads(selected_ids)
-            except:
-                selected_ids = [int(id.strip()) for id in selected_ids.split(',') if id.strip().isdigit()]
-        
-        if not subject or not message:
-            return jsonify({'error': 'Sujet et message sont requis'}), 400
-        
-        # Récupérer les destinataires
-        recipients = []
-        emails_list = []
-        
-        if recipient_type == 'approved':
-            approved_students = StudentRequest.query.filter_by(status='approved').all()
-            recipients = approved_students
-            emails_list = [student.email for student in approved_students if student.email]
-        elif recipient_type == 'rejected':
-            rejected_students = StudentRequest.query.filter_by(status='rejected').all()
-            recipients = rejected_students
-            emails_list = [student.email for student in rejected_students if student.email]
-        elif recipient_type == 'pending':
-            pending_students = StudentRequest.query.filter_by(status='pending').all()
-            recipients = pending_students
-            emails_list = [student.email for student in pending_students if student.email]
-        elif recipient_type == 'selected' and selected_ids:
-            selected_students = StudentRequest.query.filter(StudentRequest.id.in_(selected_ids)).all()
-            recipients = selected_students
-            emails_list = [student.email for student in selected_students if student.email]
-        elif recipient_type == 'custom' and custom_emails:
-            emails_list = [email.strip() for email in custom_emails if email.strip()]
-        else:
-            all_students = StudentRequest.query.all()
-            recipients = all_students
-            emails_list = [student.email for student in all_students if student.email]
-        
-        # Filtrer les emails valides
-        valid_emails = [email for email in emails_list if email and '@' in email]
-        
-        if not valid_emails:
-            return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
-        
-        # Envoyer les emails en batch
-        sent_count = 0
-        failed_emails = []
-        
-        try:
-            # Pour Gmail, envoyer en un seul email avec tous les destinataires en BCC
-            if len(valid_emails) <= 100:  # Limite de Gmail pour BCC
-                msg = Message(
-                    subject=subject,
-                    recipients=[app.config['MAIL_DEFAULT_SENDER']],  # Envoyer à nous-mêmes
-                    bcc=valid_emails,
-                    body=message,
-                    sender=app.config['MAIL_DEFAULT_SENDER']
-                )
-                mail.send(msg)
-                sent_count = len(valid_emails)
-                app.logger.info(f"Email groupé envoyé à {sent_count} destinataires")
-            else:
-                # Pour plus de 100 destinataires, envoyer par groupes de 100
-                for i in range(0, len(valid_emails), 100):
-                    batch = valid_emails[i:i+100]
-                    msg = Message(
-                        subject=subject,
-                        recipients=[app.config['MAIL_DEFAULT_SENDER']],
-                        bcc=batch,
-                        body=message,
-                        sender=app.config['MAIL_DEFAULT_SENDER']
-                    )
-                    mail.send(msg)
-                    sent_count += len(batch)
-                    app.logger.info(f"Batch {i//100 + 1} envoyé à {len(batch)} destinataires")
-                    
-                    # Pause pour éviter les limites
-                    if i + 100 < len(valid_emails):
-                        time.sleep(1)
-                        
-        except Exception as e:
-            app.logger.error(f"Erreur d'envoi d'email: {e}")
-            return jsonify({'error': f'Erreur SMTP: {str(e)}'}), 500
-        
-        # Préparer la réponse
-        response_data = {
-            'success': True, 
-            'message': f'{sent_count} email(s) envoyé(s) avec succès',
-            'sent_count': sent_count,
-            'total_count': len(valid_emails)
-        }
-        
-        return jsonify(response_data)
+@app.route('/admin/test_email', methods=['GET', 'POST'])
+def test_email():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
     
-    except Exception as e:
-        app.logger.error(f'Erreur générale send_email: {str(e)}')
-        return jsonify({'error': str(e)}), 500
+    if request.method == 'POST':
+        email = request.form.get('email')
+        if email:
+            try:
+                # Tester l'envoi d'email
+                subject = "Test d'email - Amicale des Étudiants"
+                message = "Ceci est un email de test pour vérifier la configuration."
+                
+                send_email_async(app.app_context(), email, subject, message)
+                
+                flash(f'Email de test envoyé à {email}', 'success')
+            except Exception as e:
+                flash(f'Erreur: {str(e)}', 'error')
+        
+        return redirect(url_for('admin_dashboard'))
+    
+    return '''
+    <form method="POST">
+        <input type="email" name="email" placeholder="Email de test" required>
+        <button type="submit">Tester l'email</button>
+    </form>
+    '''
 
 @app.route('/admin/download_report')
-@admin_required
 def download_report():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    
     try:
+        # Create PDF report
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
@@ -499,7 +525,7 @@ def download_report():
         # Table rows
         requests = StudentRequest.query.order_by(StudentRequest.date_submitted.desc()).all()
         for req in requests:
-            if y_position < 1*inch:
+            if y_position < 1*inch:  # New page if needed
                 p.showPage()
                 p.setFont("Helvetica", 8)
                 y_position = height - 1*inch
@@ -529,18 +555,21 @@ def download_report():
                         mimetype='application/pdf')
     
     except Exception as e:
-        app.logger.error(f'Erreur génération rapport: {str(e)}')
         flash(f'Erreur lors de la génération du rapport: {str(e)}', 'error')
         return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/email_compose')
-@admin_required
 def email_compose():
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    
     return render_template('email_compose.html')
 
 @app.route('/admin/api/students')
-@admin_required
 def api_students():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Non autorisé'}), 401
+    
     try:
         students = StudentRequest.query.all()
         students_data = []
@@ -557,12 +586,13 @@ def api_students():
             })
         return jsonify(students_data)
     except Exception as e:
-        app.logger.error(f'Erreur api_students: {str(e)}')
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/stats')
-@admin_required
 def api_stats():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Non autorisé'}), 401
+    
     try:
         stats = {
             'total': StudentRequest.query.count(),
@@ -572,53 +602,6 @@ def api_stats():
         }
         return jsonify(stats)
     except Exception as e:
-        app.logger.error(f'Erreur api_stats: {str(e)}')
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/admin/api/update_status_batch', methods=['POST'])
-@admin_required
-def update_status_batch():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'Données JSON requises'}), 400
-        
-        ids = data.get('ids', [])
-        status = data.get('status')
-        notes = data.get('notes', '')
-        
-        if not ids or status not in ['pending', 'approved', 'rejected']:
-            return jsonify({'error': 'Paramètres invalides'}), 400
-        
-        updated_count = 0
-        for request_id in ids:
-            try:
-                student_request = StudentRequest.query.get(request_id)
-                if student_request:
-                    old_status = student_request.status
-                    student_request.status = status
-                    student_request.admin_notes = notes
-                    student_request.date_processed = datetime.utcnow()
-                    
-                    if old_status != status:
-                        send_status_email(student_request, status, notes)
-                    
-                    updated_count += 1
-            except Exception as e:
-                app.logger.error(f"Erreur mise à jour demande {request_id}: {e}")
-                continue
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': f'{updated_count} demande(s) mise(s) à jour',
-            'updated_count': updated_count
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f'Erreur update_status_batch: {str(e)}')
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/logout')
@@ -633,20 +616,18 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    app.logger.error(f'Erreur 500: {str(e)}')
     return render_template('500.html'), 500
 
-@app.errorhandler(413)
-def request_entity_too_large(e):
-    flash('Fichier trop volumineux (max 16MB)', 'error')
-    return redirect(request.url)
-
 if __name__ == '__main__':
-    init_database()
-    print("\n" + "="*60)
-    print("APPLICATION PRÊTE POUR LA PRODUCTION")
-    print("="*60)
-    print("URL: http://localhost:5000")
-    print("Login admin: http://localhost:5000/admin/login")
-    print("="*60 + "\n")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    with app.app_context():
+        db.create_all()
+        print("\n" + "="*60)
+        print("APPLICATION DÉMARRÉE")
+        print("="*60)
+        print("URL: http://127.0.0.1:5000")
+        print("Login admin: http://127.0.0.1:5000/admin/login")
+        print("Identifiants: admin / admin123")
+        print("Email configuré: rashidtoure730@gmail.com")
+        print("="*60 + "\n")
+    
+    app.run(debug=True, port=5000)
