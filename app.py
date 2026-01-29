@@ -18,7 +18,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 import sendgrid
-from sendgrid.helpers.mail import Mail as SendGridMail, Email, Content
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail as SendGridMail, Email, Content, To
 import ssl
 
 app = Flask(__name__)
@@ -29,7 +30,7 @@ db.init_app(app)
 mail = Mail(app)
 
 # Initialize SendGrid client
-sg_client = sendgrid.SendGridAPIClient(app.config['MAIL_PASSWORD'])
+sg_client = SendGridAPIClient(app.config['MAIL_PASSWORD'])
 
 # Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -72,7 +73,7 @@ def formulaire():
                 status='pending'
             )
             
-            # Handle file uploads - SIMPLIFIÉ POUR ÉVITER LES TIMEOUT
+            # Handle file uploads
             files_required = {
                 'certificat_inscription': 'certificat_inscription',
                 'certificat_residence': 'certificat_residence', 
@@ -111,12 +112,8 @@ def formulaire():
             # Commit toutes les données
             db.session.commit()
             
-            # Envoyer l'email en arrière-plan (ne pas bloquer la réponse)
-            try:
-                send_confirmation_email.delay(email, nom, prenom, new_request.id)
-            except:
-                # Si Celery n'est pas configuré, envoyer plus tard
-                pass
+            # Envoyer l'email de confirmation
+            send_confirmation_email(email, nom, prenom, new_request.id)
             
             flash('Votre demande a été soumise avec succès! Vous recevrez un email de confirmation.', 'success')
             return redirect(url_for('index'))
@@ -128,6 +125,41 @@ def formulaire():
             return redirect(url_for('formulaire'))
     
     return render_template('form.html')
+
+# Fonction pour envoyer des emails avec SendGrid (version corrigée)
+def send_email_sendgrid(to_email, subject, body, from_email=None):
+    """Envoyer un email via SendGrid API"""
+    try:
+        if from_email is None:
+            from_email = app.config['MAIL_DEFAULT_SENDER']
+        
+        # Créer le message SendGrid avec la nouvelle API
+        message = SendGridMail(
+            from_email=Email(from_email),
+            to_emails=To(to_email),
+            subject=subject,
+            plain_text_content=Content("text/plain", body)
+        )
+        
+        # Envoyer l'email
+        response = sg_client.send(message)
+        
+        print(f"✓ Email envoyé à {to_email} - Status: {response.status_code}")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Erreur d'envoi d'email à {to_email}: {str(e)}")
+        return False
+
+# Fonction pour envoyer des emails en arrière-plan
+def send_email_async(to_email, subject, body):
+    """Envoyer un email en arrière-plan"""
+    try:
+        success = send_email_sendgrid(to_email, subject, body)
+        if not success:
+            print(f"Échec de l'envoi à {to_email}")
+    except Exception as e:
+        print(f"Erreur dans send_email_async: {str(e)}")
 
 def send_confirmation_email(to_email, nom, prenom, request_id):
     """Envoyer un email de confirmation à l'étudiant"""
@@ -153,10 +185,10 @@ Amicale des Étudiants
         )
         thread.daemon = True
         thread.start()
-        print(f"Email de confirmation programmé pour {to_email}")
+        print(f"✓ Email de confirmation programmé pour {to_email}")
         
     except Exception as email_error:
-        print(f"Erreur d'envoi d'email: {email_error}")
+        print(f"✗ Erreur d'envoi d'email: {email_error}")
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -164,20 +196,13 @@ def admin_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        print(f"\n=== TENTATIVE DE CONNEXION ===")
-        print(f"Username: '{username}'")
-        print(f"Password: '{password}'")
-        print(f"Attendu: 'admin' / 'admin123'")
-        
         if username == 'admin' and password == 'admin123':
             session['admin_logged_in'] = True
             session.permanent = True
             flash('Connexion réussie!', 'success')
-            print("✓ Connexion réussie")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Identifiants incorrects', 'error')
-            print("✗ Identifiants incorrects")
     
     return render_template('admin_login.html')
 
@@ -240,39 +265,59 @@ def update_status(request_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+def send_status_email(student, status, notes):
+    """Envoyer un email à l'étudiant concernant le statut de sa demande"""
+    if not student.email:
+        return
+    
+    if status == 'approved':
+        subject = "Félicitations ! Votre demande d'adhésion a été acceptée"
+        message = f"""Cher(e) {student.prenom} {student.nom},
 
-# Fonction pour envoyer des emails avec SendGrid
-def send_email_sendgrid(to_email, subject, body, from_email=None):
-    """Envoyer un email via SendGrid API"""
+Nous avons le plaisir de vous informer que votre demande d'adhésion à l'Amicale des Étudiants (ID: {student.id}) a été approuvée.
+
+Bienvenue dans notre communauté !
+
+"""
+    elif status == 'rejected':
+        subject = "Décision concernant votre demande d'adhésion"
+        message = f"""Cher(e) {student.prenom} {student.nom},
+
+Après examen de votre demande d'adhésion (ID: {student.id}), nous regrettons de vous informer qu'elle n'a pas pu être acceptée pour le moment.
+
+"""
+    else:
+        subject = "Mise à jour sur votre demande d'adhésion"
+        message = f"""Cher(e) {student.prenom} {student.nom},
+
+Votre demande d'adhésion (ID: {student.id}) est actuellement en cours de traitement par notre équipe.
+
+Nous vous contacterons dès que nous aurons une décision.
+
+"""
+    
+    if notes:
+        message += f"\nNote: {notes}\n"
+    
+    message += """
+Merci pour votre compréhension.
+
+Cordialement,
+La Commission Sociale REED
+Amicale des Étudiants
+"""
+    
     try:
-        if from_email is None:
-            from_email = app.config['MAIL_DEFAULT_SENDER']
-        
-        # Créer le message SendGrid
-        message = SendGridMail(
-            from_email=Email(from_email),
-            to_emails=Email(to_email),
-            subject=subject,
-            plain_text_content=Content("text/plain", body)
+        # Envoyer en arrière-plan
+        thread = threading.Thread(
+            target=send_email_async,
+            args=(student.email, subject, message)
         )
-        
-        # Envoyer l'email
-        response = sg_client.send(message)
-        
-        print(f"Email envoyé à {to_email} - Status: {response.status_code}")
-        return True
-        
+        thread.daemon = True
+        thread.start()
+        print(f"✓ Email de statut programmé pour {student.email}")
     except Exception as e:
-        print(f"Erreur d'envoi d'email à {to_email}: {str(e)}")
-        return False
-
-# Fonction pour envoyer des emails en arrière-plan
-def send_email_async(to_email, subject, body):
-    """Envoyer un email en arrière-plan"""
-    try:
-        send_email_sendgrid(to_email, subject, body)
-    except Exception as e:
-        print(f"Erreur dans send_email_async: {str(e)}")
+        print(f"✗ Erreur d'envoi d'email de statut: {e}")
 
 @app.route('/admin/send_email', methods=['POST'])
 def send_email():
@@ -372,79 +417,24 @@ def send_email():
         return jsonify(response_data)
     
     except Exception as e:
-        print(f"Erreur générale: {str(e)}")
+        print(f"Erreur générale dans send_email: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-
-def send_status_email(student, status, notes):
-    """Envoyer un email à l'étudiant concernant le statut de sa demande"""
-    if not student.email:
-        return
-    
-    if status == 'approved':
-        subject = "Félicitations ! Votre demande d'adhésion a été acceptée"
-        message = f"""Cher(e) {student.prenom} {student.nom},
-
-Nous avons le plaisir de vous informer que votre demande d'adhésion à l'Amicale des Étudiants (ID: {student.id}) a été approuvée.
-
-Bienvenue dans notre communauté !
-
-"""
-    elif status == 'rejected':
-        subject = "Décision concernant votre demande d'adhésion"
-        message = f"""Cher(e) {student.prenom} {student.nom},
-
-Après examen de votre demande d'adhésion (ID: {student.id}), nous regrettons de vous informer qu'elle n'a pas pu être acceptée pour le moment.
-
-"""
-    else:
-        subject = "Mise à jour sur votre demande d'adhésion"
-        message = f"""Cher(e) {student.prenom} {student.nom},
-
-Votre demande d'adhésion (ID: {student.id}) est actuellement en cours de traitement par notre équipe.
-
-Nous vous contacterons dès que nous aurons une décision.
-
-"""
-    
-    if notes:
-        message += f"\nNote: {notes}\n"
-    
-    message += """
-Merci pour votre compréhension.
-
-Cordialement,
-La Commission Sociale REED
-Amicale des Étudiants
-"""
-    
-    try:
-        # Envoyer en arrière-plan
-        thread = threading.Thread(
-            target=send_email_async,
-            args=(student.email, subject, message)
-        )
-        thread.daemon = True
-        thread.start()
-        print(f"Email de statut programmé pour {student.email}")
-    except Exception as e:
-        print(f"Erreur d'envoi d'email de statut: {e}")
 
 @app.route('/test-sendgrid')
 def test_sendgrid():
     """Route pour tester SendGrid"""
     try:
         # Tester l'envoi à votre propre email
-        test_email = "commissionsociale.reed@gmail.com"  # Remplacez par votre email
+        test_email = "commissionsociale.reed@gmail.com"
         subject = "Test SendGrid depuis Render"
         message = "Ceci est un test d'envoi d'email depuis votre application sur Render."
         
         success = send_email_sendgrid(test_email, subject, message)
         
         if success:
-            return f"Email de test envoyé à {test_email}"
+            return f"✓ Email de test envoyé à {test_email}"
         else:
-            return "Échec de l'envoi de l'email de test"
+            return "✗ Échec de l'envoi de l'email de test"
     
     except Exception as e:
         return f"Erreur: {str(e)}"
@@ -456,14 +446,22 @@ def admin_test_email():
         return redirect(url_for('admin_login'))
     
     return '''
-    <h2>Tester l'envoi d'emails</h2>
-    <form method="POST" action="/admin/send-test-email">
-        <div>
-            <label>Email de test:</label>
-            <input type="email" name="email" value="commissionsociale.reed@gmail.com" required>
-        </div>
-        <button type="submit">Envoyer un test</button>
-    </form>
+    <div style="padding: 20px; max-width: 600px; margin: 0 auto;">
+        <h2>📧 Tester l'envoi d'emails avec SendGrid</h2>
+        <form method="POST" action="/admin/send-test-email">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Email de test:</label>
+                <input type="email" name="email" value="commissionsociale.reed@gmail.com" required 
+                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <button type="submit" style="background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                Envoyer un test
+            </button>
+        </form>
+        <p style="margin-top: 20px; color: #666;">
+            <small>Vérifiez votre boîte de réception et vos spams après l'envoi.</small>
+        </p>
+    </div>
     '''
 
 @app.route('/admin/send-test-email', methods=['POST'])
@@ -480,9 +478,9 @@ def send_test_email():
         )
         
         if success:
-            flash(f'Email de test envoyé à {email}', 'success')
+            flash(f'✓ Email de test envoyé à {email}', 'success')
         else:
-            flash(f'Échec de l\'envoi à {email}', 'error')
+            flash(f'✗ Échec de l\'envoi à {email}', 'error')
     
     return redirect(url_for('admin_dashboard'))
 
@@ -664,6 +662,7 @@ if __name__ == '__main__':
         print("Login admin: http://127.0.0.1:5000/admin/login")
         print("Identifiants: admin / admin123")
         print("Email configuré: commissionsociale.reed@gmail.com")
+        print("SendGrid API Key: " + ("✓ Configuré" if app.config['MAIL_PASSWORD'] else "✗ Non configuré"))
         print("="*60 + "\n")
     
     app.run(debug=True, port=5000)
