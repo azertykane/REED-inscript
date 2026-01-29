@@ -2,11 +2,12 @@ import os
 from datetime import timedelta
 
 class Config:
-    # Clé secrète
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+    # Security
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'production-secret-key-change-this-in-production')
     
-    # Base de données
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///amicale.db'
+    # Database configuration for Render
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///' + os.path.join(basedir, 'instance', 'amicale.db'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Upload configuration
@@ -14,13 +15,13 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
-    # Mail configuration
+    # Mail configuration for Gmail
     MAIL_SERVER = 'smtp.gmail.com'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
-    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
-    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'noreply@amicale.com')
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'rashidtoure730@gmail.com')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'rashidtoure730@gmail.com')
     
     # Admin credentials
     ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -28,3 +29,8 @@ class Config:
     
     # Session
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
+    
+    # Production settings
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'

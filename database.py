@@ -16,7 +16,7 @@ class StudentRequest(db.Model):
     certificat_residence = db.Column(db.String(300))
     demande_manuscrite = db.Column(db.String(300))
     carte_membre_reed = db.Column(db.String(300))
-    copie_cni = db.Column(db.String(300))  # NOUVEAU: Copie de la CNI
+    copie_cni = db.Column(db.String(300))
     
     # Status: pending, approved, rejected
     status = db.Column(db.String(20), default='pending')

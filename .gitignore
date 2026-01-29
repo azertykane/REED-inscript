@@ -1,16 +1,32 @@
-# Environment
-.env
-venv/
-env/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Database
-amicale.db
+# SQLite
+*.db
+*.sqlite3
+
+# Instance
 instance/
 
-# Uploads
-static/uploads/
+# Uploads (sauf le dossier lui-même)
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Environnement
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -21,3 +37,6 @@ static/uploads/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log

@@ -10,6 +10,19 @@
         margin-bottom: 3rem;
         color: white;
     }
+    .document-upload {
+        border: 2px dashed var(--light-blue);
+        border-radius: 10px;
+        padding: 1.5rem;
+        text-align: center;
+        background: var(--light-gray);
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    .document-upload:hover {
+        border-color: var(--secondary-blue);
+        background: var(--light-blue);
+    }
 </style>
 {% endblock %}
 
@@ -66,7 +79,8 @@
                         <p class="text-muted mb-4">Tous les documents doivent être au format PDF, JPG ou PNG (max 16MB)</p>
 
                         <div class="row">
-                            <div class="col-md-6 mb-4">
+                            <!-- Ligne 1 -->
+                            <div class="col-md-4 mb-4">
                                 <div class="document-upload">
                                     <label for="certificat_inscription" class="form-label">
                                         <i class="fas fa-graduation-cap me-2"></i>Certificat d'inscription ou carte étudiante *
@@ -76,7 +90,7 @@
                                     <small class="form-text text-muted">Document prouvant votre statut étudiant</small>
                                 </div>
                             </div>
-                            <div class="col-md-6 mb-4">
+                            <div class="col-md-4 mb-4">
                                 <div class="document-upload">
                                     <label for="certificat_residence" class="form-label">
                                         <i class="fas fa-home me-2"></i>Certificat de résidence *
@@ -86,6 +100,18 @@
                                     <small class="form-text text-muted">Justificatif de domicile</small>
                                 </div>
                             </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="document-upload">
+                                    <label for="copie_cni" class="form-label">
+                                        <i class="fas fa-id-card me-2"></i>Copie de la CNI *
+                                    </label>
+                                    <input type="file" class="form-control" id="copie_cni" 
+                                           name="copie_cni" accept=".pdf,.jpg,.jpeg,.png" required>
+                                    <small class="form-text text-muted">Carte Nationale d'Identité recto-verso</small>
+                                </div>
+                            </div>
+                            
+                            <!-- Ligne 2 -->
                             <div class="col-md-6 mb-4">
                                 <div class="document-upload">
                                     <label for="demande_manuscrite" class="form-label">
@@ -106,36 +132,16 @@
                                     <small class="form-text text-muted">Carte de membre REED valide</small>
                                 </div>
                             </div>
-                            <div class="col-md-6 mb-4">
-                                <div class="document-upload">
-                                    <label for="copie_cni" class="form-label">
-                                        <i class="fas fa-id-card me-2"></i>Copie de la CNI *
-                                    </label>
-                                    <input type="file" class="form-control" id="copie_cni" 
-                                           name="copie_cni" accept=".pdf,.jpg,.jpeg,.png" required>
-                                    <small class="form-text text-muted">Copie recto-verso de la Carte Nationale d'Identité</small>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-4">
-                                <div class="document-upload">
-                                    <label for="photo_identite" class="form-label">
-                                        <i class="fas fa-camera me-2"></i>Photo d'identité
-                                    </label>
-                                    <input type="file" class="form-control" id="photo_identite" 
-                                           name="photo_identite" accept=".jpg,.jpeg,.png">
-                                    <small class="form-text text-muted">Photo d'identité récente (optionnel)</small>
-                                </div>
-                            </div>
                         </div>
 
                         <div class="alert alert-info mt-4">
                             <h5><i class="fas fa-info-circle me-2"></i>Important</h5>
                             <ul class="mb-0">
                                 <li>Tous les champs marqués d'un * sont obligatoires</li>
+                                <li><strong>La CNI doit être recto-verso lisible</strong></li>
                                 <li>Votre demande sera traitée dans les 48 heures</li>
                                 <li>Vous recevrez une notification par email du résultat</li>
                                 <li>Les documents doivent être clairement lisibles</li>
-                                <li>La CNI doit être valide et lisible recto-verso</li>
                             </ul>
                         </div>
 
@@ -162,7 +168,7 @@ document.getElementById('demandeForm').addEventListener('submit', function(e) {
     let allFilesValid = true;
     
     fileInputs.forEach(input => {
-        if (input.files.length > 0 && input.hasAttribute('required')) {
+        if (input.files.length > 0) {
             const file = input.files[0];
             const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
             const maxSize = 16 * 1024 * 1024; // 16MB
@@ -182,84 +188,6 @@ document.getElementById('demandeForm').addEventListener('submit', function(e) {
     if (!allFilesValid) {
         e.preventDefault();
     }
-});
-// static/js/form.js
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('demandeForm');
-    if (!form) return;
-    
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        // Désactiver le bouton pour éviter les doubles clics
-        const submitBtn = form.querySelector('button[type="submit"]');
-        const originalText = submitBtn.innerHTML;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Envoi en cours...';
-        submitBtn.disabled = true;
-        
-        try {
-            // Valider les fichiers
-            const fileInputs = form.querySelectorAll('input[type="file"][required]');
-            let valid = true;
-            
-            for (const input of fileInputs) {
-                if (input.files.length === 0) {
-                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} est obligatoire`);
-                    valid = false;
-                    break;
-                }
-                
-                const file = input.files[0];
-                const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-                const maxSize = 16 * 1024 * 1024; // 16MB
-                
-                if (!validTypes.includes(file.type)) {
-                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} doit être au format PDF, JPG ou PNG`);
-                    valid = false;
-                    break;
-                }
-                
-                if (file.size > maxSize) {
-                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} est trop volumineux (max 16MB)`);
-                    valid = false;
-                    break;
-                }
-            }
-            
-            if (!valid) {
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-                return;
-            }
-            
-            // Soumettre le formulaire
-            const formData = new FormData(form);
-            
-            const response = await fetch(form.action, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (response.redirected) {
-                // Redirection après succès
-                window.location.href = response.url;
-            } else if (response.ok) {
-                const html = await response.text();
-                // Traiter la réponse si nécessaire
-                window.location.reload();
-            } else {
-                alert('Une erreur est survenue lors de l\'envoi');
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-            }
-            
-        } catch (error) {
-            console.error('Erreur:', error);
-            alert('Erreur de connexion au serveur');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    });
 });
 </script>
 {% endblock %}

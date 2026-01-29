@@ -598,7 +598,7 @@ async function updateStatus(requestId, status, event = null) {
     const notes = prompt('Notes (optionnel):');
     if (notes === null) return;
     
-    showLoading('Mise à jour en cours...');
+    showLoading();
     
     try {
         const response = await fetch(`/admin/update_status/${requestId}`, {
@@ -613,80 +613,14 @@ async function updateStatus(requestId, status, event = null) {
         });
         
         if (response.ok) {
-            const result = await response.json();
-            showSuccess(result.message || 'Statut mis à jour!');
-            
-            // Mettre à jour la ligne sans recharger toute la page
-            updateRowStatus(requestId, status);
-            
+            showSuccess('Statut mis à jour avec succès!');
+            setTimeout(() => location.reload(), 1000);
         } else {
-            const error = await response.text();
-            showError('Erreur: ' + error);
+            showError('Erreur lors de la mise à jour');
         }
     } catch (error) {
         showError('Erreur: ' + error);
-    } finally {
-        hideLoading();
     }
-}
-
-function updateRowStatus(requestId, newStatus) {
-    const row = document.querySelector(`tr[data-search*="${requestId}"]`);
-    if (!row) {
-        location.reload(); // Recharger si on ne trouve pas la ligne
-        return;
-    }
-    
-    // Mettre à jour le badge de statut
-    const statusCell = row.querySelector('.status-badge');
-    if (statusCell) {
-        let badgeClass = '';
-        let badgeText = '';
-        
-        switch(newStatus) {
-            case 'approved':
-                badgeClass = 'bg-success bg-opacity-10 text-success';
-                badgeText = '<i class="fas fa-check me-1"></i> Approuvé';
-                break;
-            case 'rejected':
-                badgeClass = 'bg-danger bg-opacity-10 text-danger';
-                badgeText = '<i class="fas fa-times me-1"></i> Rejeté';
-                break;
-            default:
-                badgeClass = 'bg-warning bg-opacity-10 text-warning';
-                badgeText = '<i class="fas fa-clock me-1"></i> En attente';
-        }
-        
-        statusCell.className = `status-badge ${badgeClass}`;
-        statusCell.innerHTML = badgeText;
-    }
-    
-    // Mettre à jour l'attribut data-status
-    row.dataset.status = newStatus;
-    
-    // Mettre à jour les compteurs
-    updateCounters();
-}
-
-function updateCounters() {
-    const rows = document.querySelectorAll('#requestsTable tbody tr:not([style*="display: none"])');
-    const counts = { pending: 0, approved: 0, rejected: 0 };
-    
-    rows.forEach(row => {
-        const status = row.dataset.status;
-        if (status && counts.hasOwnProperty(status)) {
-            counts[status]++;
-        }
-    });
-    
-    // Mettre à jour l'affichage (si vous avez des éléments pour ces compteurs)
-    const pendingEl = document.querySelector('.pending-count');
-    const approvedEl = document.querySelector('.approved-count');
-    const rejectedEl = document.querySelector('.rejected-count');
-    
-    if (pendingEl) pendingEl.textContent = counts.pending;
-    if (approvedEl) approvedEl.textContent = counts.approved;
-    if (rejectedEl) rejectedEl.textContent = counts.rejected;
 }
 
 // Update status of selected requests

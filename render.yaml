@@ -1,25 +1,19 @@
 services:
   - type: web
-    name: reed-inscription
+    name: student-amicale-app
     env: python
-    buildCommand: |
-      pip install -r requirements.txt
-    startCommand: |
-      python app.py
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.10.8
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: reed-db
-          property: connectionString
-    healthCheckPath: /health
-    autoDeploy: true
-
-databases:
-  - name: reed-db
-    databaseName: reed
-    user: reed_user
-    plan: free
+      - key: MAIL_USERNAME
+        value: commissionsociale.reed@gmail.com
+      - key: MAIL_PASSWORD
+        sync: false  # Vous devrez l'ajouter manuellement dans le dashboard
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/static/uploads
+      sizeGB: 1
