@@ -34,9 +34,17 @@ class RenderConfig(Config):
     SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
     
     # Configuration mail avec valeurs par défaut
-    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME','rashidtoure730@gmail.com')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'noreply@amicale.com')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'rashidtoure730@gmail.com')
+
+        # Augmenter les timeouts pour Render
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USE_SSL = False
+    MAIL_TIMEOUT = 30  # Augmenter à 30 secondes
+    MAIL_DEBUG = True  # Activer le debug pour voir les erreurs
     
     # Chemin absolu pour les uploads
     UPLOAD_FOLDER = str(BASE_DIR / 'static' / 'uploads')
@@ -325,16 +333,26 @@ def send_email():
         return jsonify({'error': 'Non autorisé'}), 401
     
     try:
-        data = request.get_json()
+        # Vérifier si les données JSON sont valides
+        if not request.is_json:
+            print("✗ Données JSON manquantes")
+            return jsonify({'error': 'Données JSON requises'}), 400
+        
+        data = request.get_json(silent=True)  # silent=True pour éviter les erreurs
         
         if not data:
-            return jsonify({'error': 'Données JSON requises'}), 400
+            print("✗ Données JSON invalides ou vides")
+            return jsonify({'error': 'Données JSON invalides'}), 400
+        
+        print(f"✓ Données reçues: {data.keys() if data else 'Aucune'}")
         
         recipient_type = data.get('recipient_type', 'all')
         subject = data.get('subject', '')
         message = data.get('message', '')
         custom_emails = data.get('custom_emails', [])
         selected_ids = data.get('selected_ids', [])
+        
+        print(f"Type: {recipient_type}, Sujet: {subject[:50]}...")
         
         if not subject or not message:
             return jsonify({'error': 'Sujet et message sont requis'}), 400
@@ -361,6 +379,8 @@ def send_email():
                 recipients = selected_students
                 emails_list = [student.email for student in selected_students if student.email]
             elif recipient_type == 'custom' and custom_emails:
+                if isinstance(custom_emails, str):
+                    custom_emails = [email.strip() for email in custom_emails.split(',') if email.strip()]
                 emails_list = [email.strip() for email in custom_emails if email.strip()]
             else:
                 # Tous les étudiants
@@ -369,6 +389,7 @@ def send_email():
                 emails_list = [student.email for student in all_students if student.email]
         except Exception as e:
             print(f"Erreur lors de la récupération des destinataires: {e}")
+            traceback.print_exc()
             return jsonify({'error': f'Erreur base de données: {str(e)}'}), 500
         
         # Filtrer les emails valides
@@ -377,11 +398,23 @@ def send_email():
         if not valid_emails:
             return jsonify({'error': 'Aucun destinataire valide trouvé'}), 400
         
+        print(f"✓ {len(valid_emails)} email(s) valide(s) trouvé(s)")
+        
+        # Si aucun email configuré, retourner une réponse mais ne pas envoyer
+        sender = get_mail_sender()
+        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+            print("⚠ Email non configuré, simulation d'envoi")
+            return jsonify({
+                'success': True, 
+                'message': f'Email non envoyé (configuration manquante) - {len(valid_emails)} destinataire(s)',
+                'sent_count': 0,
+                'total_count': len(valid_emails),
+                'warning': 'Email non configuré sur le serveur'
+            })
+        
         # Envoyer les emails
         sent_count = 0
         failed_emails = []
-        
-        sender = get_mail_sender()
         
         for i, email in enumerate(valid_emails):
             try:
@@ -408,9 +441,9 @@ def send_email():
                 sent_count += 1
                 print(f"✓ Email envoyé à {email}")
                 
-                # Petite pause pour éviter les limites de Gmail
-                if i % 10 == 0 and i > 0:
-                    time.sleep(1)
+                # Petite pause pour éviter les limites
+                if i % 5 == 0 and i > 0:
+                    time.sleep(0.5)
                     
             except Exception as e:
                 failed_emails.append({'email': email, 'error': str(e)})
@@ -425,16 +458,17 @@ def send_email():
         }
         
         if failed_emails:
-            response_data['failed_emails'] = failed_emails[:10]
+            response_data['failed_emails'] = failed_emails[:5]  # Limiter pour ne pas surcharger
             response_data['warning'] = f"{len(failed_emails)} email(s) n'ont pas pu être envoyés"
         
+        print(f"✓ Réponse: {response_data}")
         return jsonify(response_data)
     
     except Exception as e:
-        print(f"Erreur dans send_email: {e}")
+        print(f"✗ Erreur dans send_email: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
+    
 @app.route('/admin/download_report')
 def download_report():
     if not session.get('admin_logged_in'):

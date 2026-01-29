@@ -183,5 +183,83 @@ document.getElementById('demandeForm').addEventListener('submit', function(e) {
         e.preventDefault();
     }
 });
+// static/js/form.js
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('demandeForm');
+    if (!form) return;
+    
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Désactiver le bouton pour éviter les doubles clics
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Envoi en cours...';
+        submitBtn.disabled = true;
+        
+        try {
+            // Valider les fichiers
+            const fileInputs = form.querySelectorAll('input[type="file"][required]');
+            let valid = true;
+            
+            for (const input of fileInputs) {
+                if (input.files.length === 0) {
+                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} est obligatoire`);
+                    valid = false;
+                    break;
+                }
+                
+                const file = input.files[0];
+                const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+                const maxSize = 16 * 1024 * 1024; // 16MB
+                
+                if (!validTypes.includes(file.type)) {
+                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} doit être au format PDF, JPG ou PNG`);
+                    valid = false;
+                    break;
+                }
+                
+                if (file.size > maxSize) {
+                    alert(`Le fichier ${input.name.replace(/_/g, ' ')} est trop volumineux (max 16MB)`);
+                    valid = false;
+                    break;
+                }
+            }
+            
+            if (!valid) {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+                return;
+            }
+            
+            // Soumettre le formulaire
+            const formData = new FormData(form);
+            
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.redirected) {
+                // Redirection après succès
+                window.location.href = response.url;
+            } else if (response.ok) {
+                const html = await response.text();
+                // Traiter la réponse si nécessaire
+                window.location.reload();
+            } else {
+                alert('Une erreur est survenue lors de l\'envoi');
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+            
+        } catch (error) {
+            console.error('Erreur:', error);
+            alert('Erreur de connexion au serveur');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+});
 </script>
 {% endblock %}
